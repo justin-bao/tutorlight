@@ -1,6 +1,7 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { lovable } from "@/integrations/lovable";
 import { useSession } from "@/lib/auth";
 import { Sparkles, Loader2 } from "lucide-react";
 
@@ -75,11 +76,11 @@ function AuthPage() {
     setBusy(true);
     setError(null);
     try {
-      const { error: err } = await supabase.auth.signInWithOAuth({
-        provider: "google",
-        options: { redirectTo: window.location.origin },
+      const result = await lovable.auth.signInWithOAuth("google", {
+        redirect_uri: window.location.origin,
       });
-      if (err) throw err;
+      if (result.error) throw result.error;
+      // If redirected, browser will navigate away. If tokens returned, session is set.
     } catch (err) {
       setError(err instanceof Error ? err.message : "Google sign-in failed");
       setBusy(false);
