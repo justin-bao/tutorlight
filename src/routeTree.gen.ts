@@ -11,6 +11,8 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as AuthRouteImport } from './routes/auth'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as ApiLessonQaRouteImport } from './routes/api/lesson-qa'
+import { Route as ApiGenerateLessonRouteImport } from './routes/api/generate-lesson'
 
 const AuthRoute = AuthRouteImport.update({
   id: '/auth',
@@ -22,31 +24,49 @@ const IndexRoute = IndexRouteImport.update({
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiLessonQaRoute = ApiLessonQaRouteImport.update({
+  id: '/api/lesson-qa',
+  path: '/api/lesson-qa',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiGenerateLessonRoute = ApiGenerateLessonRouteImport.update({
+  id: '/api/generate-lesson',
+  path: '/api/generate-lesson',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/auth': typeof AuthRoute
+  '/api/generate-lesson': typeof ApiGenerateLessonRoute
+  '/api/lesson-qa': typeof ApiLessonQaRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/auth': typeof AuthRoute
+  '/api/generate-lesson': typeof ApiGenerateLessonRoute
+  '/api/lesson-qa': typeof ApiLessonQaRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/auth': typeof AuthRoute
+  '/api/generate-lesson': typeof ApiGenerateLessonRoute
+  '/api/lesson-qa': typeof ApiLessonQaRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/auth'
+  fullPaths: '/' | '/auth' | '/api/generate-lesson' | '/api/lesson-qa'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/auth'
-  id: '__root__' | '/' | '/auth'
+  to: '/' | '/auth' | '/api/generate-lesson' | '/api/lesson-qa'
+  id: '__root__' | '/' | '/auth' | '/api/generate-lesson' | '/api/lesson-qa'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AuthRoute: typeof AuthRoute
+  ApiGenerateLessonRoute: typeof ApiGenerateLessonRoute
+  ApiLessonQaRoute: typeof ApiLessonQaRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -65,12 +85,28 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/lesson-qa': {
+      id: '/api/lesson-qa'
+      path: '/api/lesson-qa'
+      fullPath: '/api/lesson-qa'
+      preLoaderRoute: typeof ApiLessonQaRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/generate-lesson': {
+      id: '/api/generate-lesson'
+      path: '/api/generate-lesson'
+      fullPath: '/api/generate-lesson'
+      preLoaderRoute: typeof ApiGenerateLessonRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AuthRoute: AuthRoute,
+  ApiGenerateLessonRoute: ApiGenerateLessonRoute,
+  ApiLessonQaRoute: ApiLessonQaRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
