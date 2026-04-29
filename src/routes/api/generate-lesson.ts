@@ -366,27 +366,7 @@ export const Route = createFileRoute("/api/generate-lesson")({
           if (!toolCall?.function?.arguments) {
             throw new Error("AI did not return a lesson");
           }
-          const parsedArgs = JSON.parse(toolCall.function.arguments);
-
-          // Salvage: drop whiteboard events with invalid/missing type so one
-          // malformed item doesn't fail the whole lesson.
-          const VALID_TYPES = new Set([
-            "title", "bullet", "definition", "equation", "diagram", "image", "code", "annotation", "clear",
-          ]);
-          if (Array.isArray(parsedArgs?.sections)) {
-            for (const sec of parsedArgs.sections) {
-              if (Array.isArray(sec?.whiteboard)) {
-                sec.whiteboard = sec.whiteboard
-                  .filter((e: any) => e && typeof e === "object" && VALID_TYPES.has(e.type) && typeof e.id === "string" && typeof e.at === "number")
-                  .map((e: any) => {
-                    // Ensure diagram has nodes array
-                    if (e.type === "diagram" && !Array.isArray(e.nodes)) e.nodes = [];
-                    return e;
-                  });
-              }
-              if (!Array.isArray(sec?.sources)) sec.sources = [];
-            }
-          }
+          const parsedArgs = normalizeLessonArgs(JSON.parse(toolCall.function.arguments));
 
           const lessonData = LessonSchema.parse(parsedArgs);
 
