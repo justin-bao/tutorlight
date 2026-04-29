@@ -1,4 +1,4 @@
-import ReactKatex from "react-katex";
+import * as ReactKatex from "react-katex";
 import type { WhiteboardEvent } from "@/lib/whiteboard-types";
 import { useMemo } from "react";
 
