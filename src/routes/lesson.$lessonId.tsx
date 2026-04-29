@@ -84,9 +84,9 @@ function LessonView() {
         supabase.from("lesson_messages").select("*").eq("lesson_id", lessonId).order("created_at"),
       ]);
       if (cancelled) return;
-      if (l) setLesson(l as LessonRow);
-      if (s) setSections(s as SectionRow[]);
-      if (m) setMessages(m as MessageRow[]);
+      if (l) setLesson(l as unknown as LessonRow);
+      if (s) setSections(s as unknown as SectionRow[]);
+      if (m) setMessages(m as unknown as MessageRow[]);
       if (l && (l as LessonRow).status === "failed") setPollErr((l as LessonRow).error ?? "Generation failed");
     }
 
