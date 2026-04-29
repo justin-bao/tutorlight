@@ -45,6 +45,109 @@ const InputSchema = z.object({
   topic: z.string().min(2).max(500),
 });
 
+const VALID_TYPES = new Set(["title", "bullet", "definition", "equation", "diagram", "image", "code", "annotation", "clear"]);
+const VALID_SHAPES = new Set(["flow", "cycle", "tree", "compare", "axis"]);
+
+function firstString(...values: unknown[]) {
+  return values.find((value): value is string => typeof value === "string" && value.trim().length > 0)?.trim();
+}
+
+function inferWhiteboardType(event: any) {
+  if (VALID_TYPES.has(event?.type)) return event.type;
+  if (firstString(event?.term, event?.definition, event?.description, event?.meaning)) return "definition";
+  if (Array.isArray(event?.nodes) || firstString(event?.shape)) return "diagram";
+  if (firstString(event?.latex, event?.formula, event?.equation)) return "equation";
+  if (firstString(event?.image_prompt, event?.prompt, event?.imagePrompt)) return "image";
+  if (firstString(event?.code, event?.snippet)) return "code";
+  if (firstString(event?.targetId, event?.target_id)) return "annotation";
+  if (firstString(event?.text, event?.label, event?.caption, event?.title)) return "bullet";
+  return null;
+}
+
+function normalizeWhiteboardEvent(event: any, sectionIndex: number, eventIndex: number) {
+  if (!event || typeof event !== "object") return null;
+
+  const type = inferWhiteboardType(event);
+  if (!type) return null;
+
+  const base = {
+    id: firstString(event.id) ?? `s${sectionIndex + 1}-e${eventIndex + 1}`,
+    at: typeof event.at === "number" && Number.isFinite(event.at) ? event.at : eventIndex * 8,
+    type,
+  };
+
+  if (type === "title") {
+    const text = firstString(event.text, event.title, event.label, event.caption);
+    return text ? { ...base, type: "title", text } : null;
+  }
+  if (type === "bullet") {
+    const text = firstString(event.text, event.label, event.caption, event.title, event.summary);
+    return text ? { ...base, type: "bullet", text, under: firstString(event.under, event.parentId) } : null;
+  }
+  if (type === "definition") {
+    const term = firstString(event.term, event.title, event.label, event.text) ?? "Key idea";
+    const definition = firstString(event.definition, event.description, event.meaning, event.body, event.explanation, event.text, event.caption);
+    return definition ? { ...base, type: "definition", term, definition } : null;
+  }
+  if (type === "equation") {
+    const latex = firstString(event.latex, event.formula, event.equation, event.text);
+    return latex ? { ...base, type: "equation", latex, caption: firstString(event.caption) } : null;
+  }
+  if (type === "diagram") {
+    const nodes = Array.isArray(event.nodes)
+      ? event.nodes
+          .map((node: any, nodeIndex: number) => ({
+            id: firstString(node?.id) ?? `n${nodeIndex + 1}`,
+            label: firstString(node?.label, node?.text, node?.title, node?.name) ?? `Step ${nodeIndex + 1}`,
+            sub: firstString(node?.sub, node?.caption, node?.description),
+          }))
+          .filter((node: { label: string }) => node.label.length > 0)
+      : [];
+    if (!nodes.length) return null;
+    return {
+      ...base,
+      type: "diagram",
+      shape: VALID_SHAPES.has(event.shape) ? event.shape : "flow",
+      nodes,
+      edges: Array.isArray(event.edges)
+        ? event.edges.flatMap((edge: any) => {
+            const from = firstString(edge?.from, edge?.source);
+            const to = firstString(edge?.to, edge?.target);
+            return from && to ? [{ from, to, label: firstString(edge?.label) }] : [];
+          })
+        : undefined,
+      caption: firstString(event.caption),
+    };
+  }
+  if (type === "image") {
+    const image_prompt = firstString(event.image_prompt, event.prompt, event.imagePrompt, event.caption, event.text);
+    return image_prompt ? { ...base, type: "image", image_prompt, caption: firstString(event.caption) } : null;
+  }
+  if (type === "code") {
+    const code = firstString(event.code, event.snippet, event.text);
+    return code ? { ...base, type: "code", language: firstString(event.language, event.lang) ?? "text", code, caption: firstString(event.caption) } : null;
+  }
+  if (type === "annotation") {
+    const text = firstString(event.text, event.label, event.caption) ?? "Notice this";
+    return { ...base, type: "annotation", targetId: firstString(event.targetId, event.target_id, event.target) ?? "", text };
+  }
+  return { ...base, type: "clear" };
+}
+
+function normalizeLessonArgs(args: any) {
+  if (!Array.isArray(args?.sections)) return args;
+  args.sections = args.sections.map((section: any, sectionIndex: number) => ({
+    ...section,
+    sources: Array.isArray(section?.sources) ? section.sources : [],
+    whiteboard: Array.isArray(section?.whiteboard)
+      ? section.whiteboard
+          .map((event: any, eventIndex: number) => normalizeWhiteboardEvent(event, sectionIndex, eventIndex))
+          .filter(Boolean)
+      : [],
+  }));
+  return args;
+}
+
 const SYSTEM_PROMPT = `You are an expert curriculum designer who creates short, engaging audio lessons taught by an AI tutor on a virtual whiteboard.
 
 Given a topic, produce a structured lesson with 4–6 sections. For EACH section:
