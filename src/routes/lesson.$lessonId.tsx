@@ -58,7 +58,7 @@ function LessonView() {
   const [sections, setSections] = useState<SectionRow[]>([]);
   const [messages, setMessages] = useState<MessageRow[]>([]);
   const [activeIdx, setActiveIdx] = useState(0);
-  const [pinnedId, setPinnedId] = useState<string | null>(null);
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [question, setQuestion] = useState("");
   const [asking, setAsking] = useState(false);
   const [pollErr, setPollErr] = useState<string | null>(null);
@@ -118,10 +118,33 @@ function LessonView() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeSection?.id]);
 
-  const pinnedEvent = useMemo(() => {
-    if (!pinnedId || !activeSection) return null;
-    return activeSection.whiteboard.find((e) => e.id === pinnedId) ?? null;
-  }, [pinnedId, activeSection]);
+  // Visible events at the current elapsed time (mirrors Whiteboard's filter)
+  const visibleEvents = useMemo(() => {
+    if (!activeSection) return [];
+    const sorted = [...activeSection.whiteboard].sort((a, b) => a.at - b.at);
+    let buf: WhiteboardEvent[] = [];
+    for (const e of sorted) {
+      if (e.at > timeline.elapsed) break;
+      if (e.type === "clear") buf = [];
+      else buf.push(e);
+    }
+    return buf;
+  }, [activeSection, timeline.elapsed]);
+
+  const selectedEvents = useMemo(() => {
+    if (!activeSection) return [];
+    const map = new Map(activeSection.whiteboard.map((e) => [e.id, e]));
+    return selectedIds.map((id) => map.get(id)).filter(Boolean) as WhiteboardEvent[];
+  }, [selectedIds, activeSection]);
+
+  function toggleSelect(id: string, additive: boolean) {
+    setSelectedIds((prev) => {
+      const has = prev.includes(id);
+      if (additive) return has ? prev.filter((x) => x !== id) : [...prev, id];
+      // single-select: clicking the same one deselects, otherwise replace
+      return has && prev.length === 1 ? [] : [id];
+    });
+  }
 
   function togglePlay() {
     if (tutor.speaking) {
@@ -135,7 +158,7 @@ function LessonView() {
 
   function jumpTo(idx: number) {
     setActiveIdx(idx);
-    setPinnedId(null);
+    setSelectedIds([]);
   }
 
   async function askQuestion(e?: React.FormEvent) {
@@ -163,9 +186,16 @@ function LessonView() {
           lessonId,
           sectionId: activeSection.id,
           question: q,
-          pinnedElement: pinnedEvent
-            ? { id: pinnedEvent.id, type: pinnedEvent.type, summary: summarize(pinnedEvent) }
-            : null,
+          pinnedElements: selectedEvents.map((e) => ({
+            id: e.id,
+            type: e.type,
+            summary: summarize(e),
+          })),
+          whiteboardSnapshot: visibleEvents.map((e) => ({
+            id: e.id,
+            type: e.type,
+            summary: summarize(e),
+          })),
         }),
       });
       const data = await resp.json();
@@ -180,7 +210,7 @@ function LessonView() {
           created_at: new Date().toISOString(),
         },
       ]);
-      setPinnedId(null);
+      setSelectedIds([]);
       tutor.speak(data.answer);
     } catch (err) {
       setMessages((prev) => [
@@ -258,8 +288,9 @@ function LessonView() {
           <Whiteboard
             events={activeSection?.whiteboard ?? []}
             elapsed={timeline.elapsed}
-            pinnedId={pinnedId}
-            onPin={setPinnedId}
+            selectedIds={selectedIds}
+            onToggleSelect={toggleSelect}
+            onClearSelection={() => setSelectedIds([])}
             sectionHeading={activeSection?.heading ?? ""}
           />
         </div>
@@ -336,7 +367,7 @@ function LessonView() {
             <div className="flex-1 space-y-2 overflow-y-auto px-1 pb-2 text-sm">
               {sectionMessages.length === 0 && (
                 <p className="text-xs italic text-muted-foreground">
-                  Click anything on the whiteboard to ask about it, or type a question below.
+                  Click any item on the whiteboard to reference it — Shift/Cmd-click to select multiple.
                 </p>
               )}
               {sectionMessages.map((m) => (
@@ -353,14 +384,30 @@ function LessonView() {
               ))}
             </div>
 
-            {pinnedEvent && (
-              <div className="mb-2 flex items-center justify-between gap-2 rounded-lg border border-primary/40 bg-primary/10 px-2 py-1.5 text-xs">
-                <span className="truncate">
-                  About: <span className="italic">{summarize(pinnedEvent)}</span>
-                </span>
-                <button onClick={() => setPinnedId(null)} className="text-muted-foreground hover:text-foreground">
-                  <X className="h-3 w-3" />
-                </button>
+            {selectedEvents.length > 0 && (
+              <div className="mb-2 space-y-1 rounded-lg border border-primary/40 bg-primary/10 px-2 py-2 text-xs">
+                <div className="flex items-center justify-between">
+                  <span className="font-medium text-foreground">
+                    Asking about {selectedEvents.length} item{selectedEvents.length > 1 ? "s" : ""}
+                  </span>
+                  <button
+                    onClick={() => setSelectedIds([])}
+                    className="text-muted-foreground hover:text-foreground"
+                    aria-label="Clear selection"
+                  >
+                    <X className="h-3 w-3" />
+                  </button>
+                </div>
+                <ul className="space-y-0.5">
+                  {selectedEvents.map((e, i) => (
+                    <li key={e.id} className="flex items-start gap-1.5 text-muted-foreground">
+                      <span className="mt-0.5 grid h-4 w-4 shrink-0 place-items-center rounded-full bg-primary text-[9px] font-semibold text-primary-foreground">
+                        {i + 1}
+                      </span>
+                      <span className="truncate italic">{summarize(e)}</span>
+                    </li>
+                  ))}
+                </ul>
               </div>
             )}
 

@@ -6,14 +6,26 @@ const InputSchema = z.object({
   lessonId: z.string().uuid(),
   sectionId: z.string().uuid(),
   question: z.string().min(1).max(800),
-  pinnedElement: z
-    .object({
-      id: z.string(),
-      type: z.string(),
-      summary: z.string(),
-    })
-    .nullable()
-    .optional(),
+  pinnedElements: z
+    .array(
+      z.object({
+        id: z.string(),
+        type: z.string(),
+        summary: z.string(),
+      })
+    )
+    .optional()
+    .default([]),
+  whiteboardSnapshot: z
+    .array(
+      z.object({
+        id: z.string(),
+        type: z.string(),
+        summary: z.string(),
+      })
+    )
+    .optional()
+    .default([]),
 });
 
 export const Route = createFileRoute("/api/lesson-qa")({
@@ -58,25 +70,33 @@ export const Route = createFileRoute("/api/lesson-qa")({
           .single();
         if (!lesson || !section) return Response.json({ error: "Not found" }, { status: 404 });
 
-        // Persist user message
+        // Persist user message (store first pinned id for traceability)
         await supabase.from("lesson_messages").insert({
           lesson_id: body.lessonId,
           section_id: body.sectionId,
           role: "user",
           content: body.question,
-          pinned_element_id: body.pinnedElement?.id ?? null,
+          pinned_element_id: body.pinnedElements[0]?.id ?? null,
         });
 
-        const systemPrompt = `You are the AI tutor mid-lesson. Answer the learner's question briefly and conversationally (2–4 sentences). Stay grounded in the current lesson context. Speak as if continuing the live lesson — no preamble like "Great question".
+        const boardContext = body.whiteboardSnapshot.length
+          ? `\n\nCurrent whiteboard state (what the learner can see, in order):\n${body.whiteboardSnapshot
+              .map((e, i) => `  [${i + 1}] (${e.type}) ${e.summary}`)
+              .join("\n")}`
+          : "";
+
+        const pinnedContext = body.pinnedElements.length
+          ? `\n\nThe learner has SELECTED these whiteboard element(s) to ask about — center your answer on them:\n${body.pinnedElements
+              .map((e, i) => `  • (${e.type}) ${e.summary}`)
+              .join("\n")}`
+          : "";
+
+        const systemPrompt = `You are the AI tutor mid-lesson. Answer the learner's question briefly and conversationally (2–4 sentences). Stay grounded in the current lesson context. Speak as if continuing the live lesson — no preamble like "Great question". When the learner has selected element(s) on the whiteboard, refer to them naturally (e.g. "that step", "the diagram on the right").
 
 Lesson: ${lesson.title}
 Summary: ${lesson.summary}
 Current section: ${section.heading}
-Section script you just delivered: ${section.script}${
-          body.pinnedElement
-            ? `\n\nThe learner pointed at this element on the whiteboard: ${body.pinnedElement.type} — ${body.pinnedElement.summary}`
-            : ""
-        }`;
+Section script you just delivered: ${section.script}${boardContext}${pinnedContext}`;
 
         try {
           const aiResp = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {

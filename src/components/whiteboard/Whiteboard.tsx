@@ -5,12 +5,20 @@ import { WhiteboardElement } from "./WhiteboardElement";
 interface Props {
   events: WhiteboardEvent[];
   elapsed: number; // seconds since section start
-  pinnedId: string | null;
-  onPin: (id: string | null) => void;
+  selectedIds: string[];
+  onToggleSelect: (id: string, additive: boolean) => void;
+  onClearSelection: () => void;
   sectionHeading: string;
 }
 
-export function Whiteboard({ events, elapsed, pinnedId, onPin, sectionHeading }: Props) {
+export function Whiteboard({
+  events,
+  elapsed,
+  selectedIds,
+  onToggleSelect,
+  onClearSelection,
+  sectionHeading,
+}: Props) {
   // Filter events that should be visible at this elapsed time, respecting "clear"
   const visible = useMemo(() => {
     const sorted = [...events].sort((a, b) => a.at - b.at);
@@ -28,16 +36,20 @@ export function Whiteboard({ events, elapsed, pinnedId, onPin, sectionHeading }:
 
   return (
     <div className="board-paper relative h-full w-full overflow-hidden rounded-2xl shadow-2xl shadow-black/40 ring-1 ring-black/10">
-      {/* Subtle border frame */}
       <div className="pointer-events-none absolute inset-0 rounded-2xl ring-1 ring-inset ring-board-ink/10" />
-      <div className="absolute right-4 top-3 font-display text-xs italic text-board-ink/40">
+      <div className="absolute right-4 top-3 flex items-center gap-2 font-display text-xs italic text-board-ink/40">
+        {selectedIds.length > 0 && (
+          <span className="rounded-full bg-primary/90 px-2 py-0.5 text-[10px] not-italic font-sans font-medium tracking-wide text-primary-foreground">
+            {selectedIds.length} selected
+          </span>
+        )}
         {sectionHeading}
       </div>
 
       <div
         className="relative h-full overflow-y-auto px-6 py-8 md:px-10 md:py-10"
         onClick={(e) => {
-          if (e.target === e.currentTarget) onPin(null);
+          if (e.target === e.currentTarget) onClearSelection();
         }}
       >
         {visible.length === 0 && (
@@ -46,14 +58,17 @@ export function Whiteboard({ events, elapsed, pinnedId, onPin, sectionHeading }:
           </div>
         )}
         <div className="mx-auto flex max-w-2xl flex-col gap-4">
-          {visible.map((e) => (
-            <WhiteboardElement
-              key={e.id}
-              event={e}
-              pinned={pinnedId === e.id}
-              onPin={() => onPin(pinnedId === e.id ? null : e.id)}
-            />
-          ))}
+          {visible.map((e) => {
+            const idx = selectedIds.indexOf(e.id);
+            return (
+              <WhiteboardElement
+                key={e.id}
+                event={e}
+                selectedIndex={idx >= 0 ? idx + 1 : null}
+                onToggleSelect={(additive) => onToggleSelect(e.id, additive)}
+              />
+            );
+          })}
         </div>
       </div>
     </div>
