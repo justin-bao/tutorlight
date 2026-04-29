@@ -14,7 +14,149 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      lesson_messages: {
+        Row: {
+          content: string
+          created_at: string
+          id: string
+          lesson_id: string
+          pinned_element_id: string | null
+          role: string
+          section_id: string | null
+          whiteboard_addendum: Json | null
+        }
+        Insert: {
+          content: string
+          created_at?: string
+          id?: string
+          lesson_id: string
+          pinned_element_id?: string | null
+          role: string
+          section_id?: string | null
+          whiteboard_addendum?: Json | null
+        }
+        Update: {
+          content?: string
+          created_at?: string
+          id?: string
+          lesson_id?: string
+          pinned_element_id?: string | null
+          role?: string
+          section_id?: string | null
+          whiteboard_addendum?: Json | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "lesson_messages_lesson_id_fkey"
+            columns: ["lesson_id"]
+            isOneToOne: false
+            referencedRelation: "lessons"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "lesson_messages_section_id_fkey"
+            columns: ["section_id"]
+            isOneToOne: false
+            referencedRelation: "lesson_sections"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      lesson_sections: {
+        Row: {
+          created_at: string
+          estimated_duration_s: number
+          heading: string
+          id: string
+          lesson_id: string
+          order_index: number
+          script: string
+          sources: Json
+          whiteboard: Json
+        }
+        Insert: {
+          created_at?: string
+          estimated_duration_s?: number
+          heading: string
+          id?: string
+          lesson_id: string
+          order_index: number
+          script: string
+          sources?: Json
+          whiteboard?: Json
+        }
+        Update: {
+          created_at?: string
+          estimated_duration_s?: number
+          heading?: string
+          id?: string
+          lesson_id?: string
+          order_index?: number
+          script?: string
+          sources?: Json
+          whiteboard?: Json
+        }
+        Relationships: [
+          {
+            foreignKeyName: "lesson_sections_lesson_id_fkey"
+            columns: ["lesson_id"]
+            isOneToOne: false
+            referencedRelation: "lessons"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      lessons: {
+        Row: {
+          created_at: string
+          error: string | null
+          id: string
+          status: string
+          summary: string | null
+          title: string | null
+          topic: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          error?: string | null
+          id?: string
+          status?: string
+          summary?: string | null
+          title?: string | null
+          topic: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          error?: string | null
+          id?: string
+          status?: string
+          summary?: string | null
+          title?: string | null
+          topic?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      profiles: {
+        Row: {
+          created_at: string
+          display_name: string | null
+          id: string
+        }
+        Insert: {
+          created_at?: string
+          display_name?: string | null
+          id: string
+        }
+        Update: {
+          created_at?: string
+          display_name?: string | null
+          id?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
