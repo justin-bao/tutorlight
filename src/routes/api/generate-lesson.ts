@@ -163,7 +163,64 @@ export const Route = createFileRoute("/api/generate-lesson")({
                               heading: { type: "string" },
                               script: { type: "string" },
                               estimated_duration_s: { type: "number" },
-                              whiteboard: { type: "array", items: { type: "object" } },
+                              whiteboard: {
+                                type: "array",
+                                items: {
+                                  type: "object",
+                                  description:
+                                    "A whiteboard event. type MUST be one of: title, bullet, definition, equation, diagram, image, code, annotation, clear. Include the fields required by that type.",
+                                  properties: {
+                                    id: { type: "string", description: "Unique stable id like 's1-e1'" },
+                                    at: { type: "number", description: "Seconds from section start" },
+                                    type: {
+                                      type: "string",
+                                      enum: ["title", "bullet", "definition", "equation", "diagram", "image", "code", "annotation", "clear"],
+                                    },
+                                    text: { type: "string", description: "For title, bullet, annotation" },
+                                    under: { type: "string", description: "For bullet: parent id to nest under" },
+                                    term: { type: "string", description: "For definition" },
+                                    definition: { type: "string", description: "For definition" },
+                                    latex: { type: "string", description: "For equation (no $ delimiters)" },
+                                    caption: { type: "string", description: "Optional caption for equation/diagram/image/code" },
+                                    shape: {
+                                      type: "string",
+                                      enum: ["flow", "cycle", "tree", "compare", "axis"],
+                                      description: "For diagram",
+                                    },
+                                    nodes: {
+                                      type: "array",
+                                      description: "For diagram: 3-7 nodes",
+                                      items: {
+                                        type: "object",
+                                        properties: {
+                                          id: { type: "string" },
+                                          label: { type: "string" },
+                                          sub: { type: "string" },
+                                        },
+                                        required: ["id", "label"],
+                                      },
+                                    },
+                                    edges: {
+                                      type: "array",
+                                      description: "For diagram (flow/tree): edges between nodes",
+                                      items: {
+                                        type: "object",
+                                        properties: {
+                                          from: { type: "string" },
+                                          to: { type: "string" },
+                                          label: { type: "string" },
+                                        },
+                                        required: ["from", "to"],
+                                      },
+                                    },
+                                    image_prompt: { type: "string", description: "For image" },
+                                    language: { type: "string", description: "For code" },
+                                    code: { type: "string", description: "For code" },
+                                    targetId: { type: "string", description: "For annotation: id of element to annotate" },
+                                  },
+                                  required: ["id", "at", "type"],
+                                },
+                              },
                               sources: {
                                 type: "array",
                                 items: {
@@ -207,6 +264,27 @@ export const Route = createFileRoute("/api/generate-lesson")({
             throw new Error("AI did not return a lesson");
           }
           const parsedArgs = JSON.parse(toolCall.function.arguments);
+
+          // Salvage: drop whiteboard events with invalid/missing type so one
+          // malformed item doesn't fail the whole lesson.
+          const VALID_TYPES = new Set([
+            "title", "bullet", "definition", "equation", "diagram", "image", "code", "annotation", "clear",
+          ]);
+          if (Array.isArray(parsedArgs?.sections)) {
+            for (const sec of parsedArgs.sections) {
+              if (Array.isArray(sec?.whiteboard)) {
+                sec.whiteboard = sec.whiteboard
+                  .filter((e: any) => e && typeof e === "object" && VALID_TYPES.has(e.type) && typeof e.id === "string" && typeof e.at === "number")
+                  .map((e: any) => {
+                    // Ensure diagram has nodes array
+                    if (e.type === "diagram" && !Array.isArray(e.nodes)) e.nodes = [];
+                    return e;
+                  });
+              }
+              if (!Array.isArray(sec?.sources)) sec.sources = [];
+            }
+          }
+
           const lessonData = LessonSchema.parse(parsedArgs);
 
           // Persist
