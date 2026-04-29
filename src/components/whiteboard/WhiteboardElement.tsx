@@ -4,8 +4,8 @@ import { useMemo } from "react";
 
 interface Props {
   event: WhiteboardEvent;
-  pinned: boolean;
-  onPin: () => void;
+  selectedIndex: number | null; // 1-based position in selection, or null
+  onToggleSelect: (additive: boolean) => void;
 }
 
 function summarize(e: WhiteboardEvent): string {
@@ -22,17 +22,25 @@ function summarize(e: WhiteboardEvent): string {
   }
 }
 
-export function WhiteboardElement({ event, pinned, onPin }: Props) {
+export function WhiteboardElement({ event, selectedIndex, onToggleSelect }: Props) {
+  const selected = selectedIndex !== null;
   const wrapper = (children: React.ReactNode, extra?: string) => (
     <button
       type="button"
-      onClick={onPin}
-      title="Click to ask about this"
+      onClick={(ev) => onToggleSelect(ev.shiftKey || ev.metaKey || ev.ctrlKey)}
+      title="Click to select • Shift/Cmd-click to add to selection"
       data-element-id={event.id}
       className={`group relative block w-full rounded-xl text-left transition ${
-        pinned ? "ring-2 ring-primary/70 ring-offset-2 ring-offset-board" : "hover:ring-2 hover:ring-board-accent-2/30 hover:ring-offset-2 hover:ring-offset-board"
+        selected
+          ? "ring-2 ring-primary ring-offset-2 ring-offset-board bg-primary/5"
+          : "hover:ring-2 hover:ring-board-accent-2/30 hover:ring-offset-2 hover:ring-offset-board"
       } ${extra ?? ""}`}
     >
+      {selected && (
+        <span className="absolute -left-2 -top-2 z-10 grid h-6 w-6 place-items-center rounded-full bg-primary text-[11px] font-semibold text-primary-foreground shadow-md ring-2 ring-board">
+          {selectedIndex}
+        </span>
+      )}
       {children}
     </button>
   );
