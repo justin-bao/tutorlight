@@ -1,6 +1,8 @@
-import { BlockMath, InlineMath } from "react-katex";
+import ReactKatex from "react-katex";
 import type { WhiteboardEvent } from "@/lib/whiteboard-types";
 import { useMemo } from "react";
+
+const { BlockMath } = ReactKatex;
 
 interface Props {
   event: WhiteboardEvent;
