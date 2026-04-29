@@ -367,7 +367,7 @@ function LessonView() {
             <div className="flex-1 space-y-2 overflow-y-auto px-1 pb-2 text-sm">
               {sectionMessages.length === 0 && (
                 <p className="text-xs italic text-muted-foreground">
-                  Click anything on the whiteboard to ask about it, or type a question below.
+                  Click any item on the whiteboard to reference it — Shift/Cmd-click to select multiple.
                 </p>
               )}
               {sectionMessages.map((m) => (
