@@ -6,7 +6,7 @@ Learners enter a topic, sign in, and the app generates a multi-section lesson. E
 
 ## Features
 
-- Topic-to-lesson generation through the Lovable AI gateway
+- Topic-to-lesson generation through a Python FastAPI backend and an OpenAI-compatible chat completions API
 - Supabase authentication with email/password and Google OAuth
 - Saved lesson library per user
 - Dynamic whiteboard renderer for titles, bullets, definitions, equations, diagrams, images, code, annotations, and clear events
@@ -23,8 +23,8 @@ Learners enter a topic, sign in, and the app generates a multi-section lesson. E
 - TypeScript
 - Tailwind CSS 4
 - Supabase
-- Lovable Cloud Auth and Lovable AI gateway
-- Cloudflare Workers via Wrangler
+- Python FastAPI backend
+- OpenAI-compatible AI provider
 - Radix UI primitives and shadcn-style components
 
 ## Getting Started
@@ -32,9 +32,10 @@ Learners enter a topic, sign in, and the app generates a multi-section lesson. E
 ### Prerequisites
 
 - Node.js 22 or newer
+- Python 3.11 or newer
 - npm or Bun
 - A Supabase project
-- A Lovable API key for lesson generation and Q&A
+- An AI API key for an OpenAI-compatible chat completions provider
 
 ### Install dependencies
 
@@ -50,17 +51,21 @@ bun install
 
 ### Configure environment variables
 
-Create a local environment file and provide the Supabase and Lovable settings used by both the browser client and server routes.
+Create a local environment file and provide the Supabase, frontend API, and AI provider settings.
 
 ```bash
 SUPABASE_URL="https://your-project.supabase.co"
 SUPABASE_PUBLISHABLE_KEY="your-supabase-publishable-key"
 VITE_SUPABASE_URL="https://your-project.supabase.co"
 VITE_SUPABASE_PUBLISHABLE_KEY="your-supabase-publishable-key"
-LOVABLE_API_KEY="your-lovable-api-key"
+VITE_API_BASE_URL=""
+AI_API_KEY="your-ai-api-key"
+AI_BASE_URL="https://api.openai.com/v1"
+AI_MODEL="gpt-4.1-mini"
+FRONTEND_ORIGIN="http://localhost:3000"
 ```
 
-The client prefers the `VITE_` variables at build time. The server routes read `SUPABASE_URL`, `SUPABASE_PUBLISHABLE_KEY`, and `LOVABLE_API_KEY`.
+The browser client uses the `VITE_` variables at build time. The Python backend reads `SUPABASE_URL`, `SUPABASE_PUBLISHABLE_KEY`, `AI_API_KEY`, `AI_BASE_URL`, `AI_MODEL`, and `FRONTEND_ORIGIN`.
 
 ### Set up the database
 
@@ -81,16 +86,33 @@ vavyxidgklvrehkheckl
 
 ### Run locally
 
+Install the Python backend dependencies:
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r backend/requirements.txt
+```
+
+Start the backend:
+
+```bash
+npm run dev:backend
+```
+
+In another terminal, start the frontend:
+
 ```bash
 npm run dev
 ```
 
-The app starts with Vite. Open the local URL printed by the dev server.
+The Vite dev server proxies `/api` requests to `http://127.0.0.1:8000` by default. Open the local URL printed by the frontend dev server.
 
 ## Scripts
 
 ```bash
 npm run dev        # Start the Vite dev server
+npm run dev:backend # Start the Python FastAPI backend
 npm run build      # Build for production
 npm run build:dev  # Build in development mode
 npm run preview    # Preview the production build
@@ -106,8 +128,6 @@ src/routes/
   auth.tsx                  Sign up, sign in, and OAuth flow
   lessons.tsx               Saved lesson list
   lesson.$lessonId.tsx      Live lesson view
-  api/generate-lesson.ts    Authenticated AI lesson generation endpoint
-  api/lesson-qa.ts          Authenticated contextual tutor Q&A endpoint
 
 src/components/lesson/
   TutorOrb.tsx              Animated tutor presence
@@ -120,28 +140,37 @@ src/components/whiteboard/
 
 src/integrations/
   supabase/                 Supabase clients and generated types
-  lovable/                  Lovable OAuth helper
 
 supabase/migrations/        Database schema and security policies
+
+backend/
+  main.py                   FastAPI app for lesson generation and Q&A
+  requirements.txt          Python dependencies
 ```
 
 ## How Lesson Generation Works
 
 1. A signed-in user submits a topic from the home page.
 2. The app inserts a `lessons` row with `status = "generating"`.
-3. The browser calls `/api/generate-lesson` with the user's Supabase access token.
-4. The server route verifies the token, asks the Lovable AI gateway for a structured lesson, validates it with Zod, and writes sections into `lesson_sections`.
+3. The browser calls the Python `/api/generate-lesson` endpoint with the user's Supabase access token.
+4. The backend verifies the token with Supabase, asks the configured AI provider for a structured lesson, validates it with Pydantic, and writes sections into `lesson_sections`.
 5. The lesson view polls until the lesson is `ready`, then starts section playback.
 
 ## Deployment
 
-This project is configured for Cloudflare Workers through `wrangler.jsonc` and `@cloudflare/vite-plugin`.
+The frontend builds with Vite/TanStack Start. The backend is a separate FastAPI service and should be deployed on a Python-capable host.
 
-Before deploying, make sure production environment variables are available to the worker runtime:
+Before deploying, make sure production environment variables are available to the frontend and backend runtimes:
 
 - `SUPABASE_URL`
 - `SUPABASE_PUBLISHABLE_KEY`
-- `LOVABLE_API_KEY`
+- `VITE_SUPABASE_URL`
+- `VITE_SUPABASE_PUBLISHABLE_KEY`
+- `VITE_API_BASE_URL`
+- `AI_API_KEY`
+- `AI_BASE_URL`
+- `AI_MODEL`
+- `FRONTEND_ORIGIN`
 
 Then build the app:
 

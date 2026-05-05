@@ -1,6 +1,7 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { apiUrl } from "@/lib/api";
 import { useSession } from "@/lib/auth";
 import { Whiteboard } from "@/components/whiteboard/Whiteboard";
 import { useSectionTimeline } from "@/components/whiteboard/useSectionTimeline";
@@ -179,7 +180,7 @@ function LessonView() {
 
     try {
       const token = (await supabase.auth.getSession()).data.session?.access_token ?? "";
-      const resp = await fetch("/api/lesson-qa", {
+      const resp = await fetch(apiUrl("/api/lesson-qa"), {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
         body: JSON.stringify({

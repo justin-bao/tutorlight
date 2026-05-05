@@ -1,6 +1,7 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { apiUrl } from "@/lib/api";
 import { useSession, signOut } from "@/lib/auth";
 import { Sparkles, BookOpen, ArrowRight, Loader2, LogOut } from "lucide-react";
 
@@ -49,7 +50,7 @@ function Index() {
         .single();
       if (insertErr || !data) throw insertErr ?? new Error("Could not create lesson");
       // Kick off generation in background
-      fetch("/api/generate-lesson", {
+      fetch(apiUrl("/api/generate-lesson"), {
         method: "POST",
         headers: {
           "Content-Type": "application/json",

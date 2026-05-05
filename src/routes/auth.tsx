@@ -1,7 +1,7 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
-import { lovable } from "@/integrations/lovable";
+import { apiUrl } from "@/lib/api";
 import { useSession } from "@/lib/auth";
 import { Sparkles, Loader2 } from "lucide-react";
 
@@ -33,7 +33,7 @@ function AuthPage() {
             .single();
           if (data) {
             const token = (await supabase.auth.getSession()).data.session?.access_token ?? "";
-            fetch("/api/generate-lesson", {
+            fetch(apiUrl("/api/generate-lesson"), {
               method: "POST",
               headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
               body: JSON.stringify({ lessonId: data.id, topic: pending }),
@@ -76,11 +76,13 @@ function AuthPage() {
     setBusy(true);
     setError(null);
     try {
-      const result = await lovable.auth.signInWithOAuth("google", {
-        redirect_uri: window.location.origin,
+      const { error: err } = await supabase.auth.signInWithOAuth({
+        provider: "google",
+        options: {
+          redirectTo: window.location.origin,
+        },
       });
-      if (result.error) throw result.error;
-      // If redirected, browser will navigate away. If tokens returned, session is set.
+      if (err) throw err;
     } catch (err) {
       setError(err instanceof Error ? err.message : "Google sign-in failed");
       setBusy(false);
