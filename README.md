@@ -63,9 +63,12 @@ AI_API_KEY="your-ai-api-key"
 AI_BASE_URL="https://api.openai.com/v1"
 AI_MODEL="gpt-4.1-mini"
 FRONTEND_ORIGIN="http://localhost:3000"
+LANGFUSE_PUBLIC_KEY="pk-lf-..."
+LANGFUSE_SECRET_KEY="sk-lf-..."
+LANGFUSE_BASE_URL="https://cloud.langfuse.com"
 ```
 
-The browser client uses the `VITE_` variables at build time. The Python backend reads `SUPABASE_URL`, `SUPABASE_PUBLISHABLE_KEY`, `AI_API_KEY`, `AI_BASE_URL`, `AI_MODEL`, and `FRONTEND_ORIGIN`.
+The browser client uses the `VITE_` variables at build time. The Python backend reads `SUPABASE_URL`, `SUPABASE_PUBLISHABLE_KEY`, `AI_API_KEY`, `AI_BASE_URL`, `AI_MODEL`, and `FRONTEND_ORIGIN`. Langfuse credentials are only required when running prompt evals.
 
 ### Set up the database
 
@@ -119,6 +122,31 @@ npm run preview    # Preview the production build
 npm run lint       # Run ESLint
 npm run format     # Format the repo with Prettier
 ```
+
+### Prompt evals
+
+The core topic-to-lesson prompt flow has a Langfuse experiment at `backend/evals/lesson_core_flow.py`. It exercises the same prompt, tool schema, normalization, and Pydantic validation used by `/api/generate-lesson`, then scores:
+
+- schema validity
+- 4-6 section compliance
+- spoken script length
+- whiteboard timeline ordering
+- topic term coverage
+- source URL shape
+
+Run the smoke dataset:
+
+```bash
+python -m backend.evals.lesson_core_flow
+```
+
+Run against a Langfuse-hosted dataset instead:
+
+```bash
+LANGFUSE_DATASET_NAME="tutorlight/core-prompt-flow" python -m backend.evals.lesson_core_flow
+```
+
+Set `EVAL_FAIL_UNDER=0.85` to fail the process when the aggregate `average_quality` score drops below a threshold.
 
 ## Project Structure
 

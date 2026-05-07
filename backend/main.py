@@ -401,6 +401,30 @@ async def ai_chat(payload: dict[str, Any]) -> dict[str, Any]:
     return response.json()
 
 
+def lesson_generation_payload(topic: str) -> dict[str, Any]:
+    return {
+        "model": AI_MODEL,
+        "messages": [
+            {"role": "system", "content": SYSTEM_PROMPT},
+            {"role": "user", "content": f"Topic: {topic}"},
+        ],
+        "tools": [LESSON_TOOL_SCHEMA],
+        "tool_choice": {"type": "function", "function": {"name": "build_lesson"}},
+    }
+
+
+def parse_lesson_generation(ai_json: dict[str, Any]) -> LessonPayload:
+    tool_call = ai_json.get("choices", [{}])[0].get("message", {}).get("tool_calls", [{}])[0]
+    arguments = tool_call.get("function", {}).get("arguments")
+    if not arguments:
+        raise ValueError("AI did not return a lesson")
+    return LessonPayload.model_validate(normalize_lesson(json.loads(arguments)))
+
+
+async def build_lesson_from_topic(topic: str) -> LessonPayload:
+    return parse_lesson_generation(await ai_chat(lesson_generation_payload(topic)))
+
+
 @app.get("/health")
 async def health() -> dict[str, str]:
     return {"ok": "true"}
@@ -423,20 +447,7 @@ async def generate_lesson(body: GenerateLessonInput, authorization: str | None =
             raise HTTPException(status_code=404, detail="Lesson not found")
 
         try:
-            ai_json = await ai_chat({
-                "model": AI_MODEL,
-                "messages": [
-                    {"role": "system", "content": SYSTEM_PROMPT},
-                    {"role": "user", "content": f"Topic: {body.topic}"},
-                ],
-                "tools": [LESSON_TOOL_SCHEMA],
-                "tool_choice": {"type": "function", "function": {"name": "build_lesson"}},
-            })
-            tool_call = ai_json.get("choices", [{}])[0].get("message", {}).get("tool_calls", [{}])[0]
-            arguments = tool_call.get("function", {}).get("arguments")
-            if not arguments:
-                raise ValueError("AI did not return a lesson")
-            lesson_data = LessonPayload.model_validate(normalize_lesson(json.loads(arguments)))
+            lesson_data = await build_lesson_from_topic(body.topic)
 
             await supabase_request(
                 client,
