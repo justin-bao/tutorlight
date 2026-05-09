@@ -71,7 +71,17 @@ function LessonView() {
 
   const tutor = useTutorSpeech();
   const activeSection = sections[activeIdx];
-  const timeline = useSectionTimeline(activeSection?.id ?? null, false);
+
+  // Audio synthesis + signed URL management
+  const synthesize = useServerFn(synthesizeSectionAudio);
+  const getAudioUrl = useServerFn(getSectionAudioUrl);
+  const [audioUrl, setAudioUrl] = useState<string | null>(null);
+  const [audioLoading, setAudioLoading] = useState(false);
+
+  const fallbackDurationMs = activeSection
+    ? activeSection.audio_duration_ms ?? activeSection.estimated_duration_s * 1000
+    : null;
+  const timeline = useAudioTimeline(audioUrl, fallbackDurationMs);
 
   // Auth gate
   useEffect(() => {
@@ -111,18 +121,61 @@ function LessonView() {
     };
   }, [lessonId]);
 
-  // When section changes, speak it
+  // When the active section changes: stop browser TTS, fetch/synthesize audio.
   useEffect(() => {
     if (!activeSection) return;
+    let cancelled = false;
     tutor.stop();
-    timeline.reset();
-    timeline.play();
-    tutor.speak(activeSection.script, () => {
-      timeline.pause();
-    });
-    return () => tutor.stop();
+    setAudioUrl(null);
+    setAudioLoading(true);
+
+    (async () => {
+      try {
+        // 1. See if audio already exists.
+        let res = await getAudioUrl({ data: { sectionId: activeSection.id } });
+        // 2. If not, synthesize then fetch URL.
+        if (!res.url) {
+          await synthesize({ data: { sectionId: activeSection.id } });
+          res = await getAudioUrl({ data: { sectionId: activeSection.id } });
+        }
+        if (cancelled) return;
+        if (res.url) {
+          setAudioUrl(res.url);
+          // Patch local section row so subsequent visits use the cached duration
+          setSections((prev) =>
+            prev.map((s) =>
+              s.id === activeSection.id
+                ? { ...s, audio_duration_ms: res.audio_duration_ms ?? s.audio_duration_ms }
+                : s,
+            ),
+          );
+        } else {
+          // Fall back to browser TTS so the lesson is still playable.
+          tutor.speak(activeSection.script);
+        }
+      } catch (err) {
+        if (cancelled) return;
+        console.error("Audio synthesis failed", err);
+        // Fallback to browser TTS
+        tutor.speak(activeSection.script);
+      } finally {
+        if (!cancelled) setAudioLoading(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+      tutor.stop();
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeSection?.id]);
+
+  // Auto-play once audio URL is ready
+  useEffect(() => {
+    if (audioUrl) timeline.play();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [audioUrl]);
+
 
   // Visible events at the current elapsed time (mirrors Whiteboard's filter)
   const visibleEvents = useMemo(() => {
