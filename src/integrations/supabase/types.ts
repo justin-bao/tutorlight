@@ -64,6 +64,7 @@ export type Database = {
       }
       lesson_sections: {
         Row: {
+          audio_alignment: Json | null
           audio_duration_ms: number | null
           audio_path: string | null
           audio_voice_id: string | null
@@ -78,6 +79,7 @@ export type Database = {
           whiteboard: Json
         }
         Insert: {
+          audio_alignment?: Json | null
           audio_duration_ms?: number | null
           audio_path?: string | null
           audio_voice_id?: string | null
@@ -92,6 +94,7 @@ export type Database = {
           whiteboard?: Json
         }
         Update: {
+          audio_alignment?: Json | null
           audio_duration_ms?: number | null
           audio_path?: string | null
           audio_voice_id?: string | null

@@ -10,6 +10,7 @@ import { useServerFn } from "@tanstack/react-start";
 import { synthesizeSectionAudio, getSectionAudioUrl } from "@/lib/lesson-audio.functions";
 import { TutorOrb } from "@/components/lesson/TutorOrb";
 import { useTutorSpeech } from "@/components/lesson/useTutorSpeech";
+import { Transcript, type TranscriptWord } from "@/components/lesson/Transcript";
 import { summarize } from "@/components/whiteboard/WhiteboardElement";
 import type { WhiteboardEvent } from "@/lib/whiteboard-types";
 import {
@@ -77,6 +78,7 @@ function LessonView() {
   const getAudioUrl = useServerFn(getSectionAudioUrl);
   const [audioUrl, setAudioUrl] = useState<string | null>(null);
   const [audioLoading, setAudioLoading] = useState(false);
+  const [transcriptWords, setTranscriptWords] = useState<TranscriptWord[] | null>(null);
 
   const fallbackDurationMs = activeSection
     ? activeSection.audio_duration_ms ?? activeSection.estimated_duration_s * 1000
@@ -127,6 +129,7 @@ function LessonView() {
     let cancelled = false;
     tutor.stop();
     setAudioUrl(null);
+    setTranscriptWords(null);
     setAudioLoading(true);
 
     (async () => {
@@ -141,6 +144,7 @@ function LessonView() {
         if (cancelled) return;
         if (res.url) {
           setAudioUrl(res.url);
+          setTranscriptWords(res.alignment?.words ?? null);
           // Patch local section row so subsequent visits use the cached duration
           setSections((prev) =>
             prev.map((s) =>
@@ -374,6 +378,12 @@ function LessonView() {
             onPrev={() => jumpTo(Math.max(0, activeIdx - 1))}
             onNext={() => jumpTo(Math.min(sections.length - 1, activeIdx + 1))}
             onRateChange={(r) => timeline.setRate(r)}
+          />
+          <Transcript
+            words={transcriptWords}
+            fallbackText={activeSection?.script ?? ""}
+            elapsed={timeline.elapsed}
+            onSeek={(s) => timeline.seek(s)}
           />
         </div>
 

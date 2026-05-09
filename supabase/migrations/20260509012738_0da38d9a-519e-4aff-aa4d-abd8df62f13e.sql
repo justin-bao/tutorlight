@@ -1,0 +1,1 @@
+ALTER TABLE public.lesson_sections ADD COLUMN IF NOT EXISTS audio_alignment jsonb;

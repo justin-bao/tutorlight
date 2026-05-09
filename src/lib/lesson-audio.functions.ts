@@ -40,6 +40,37 @@ export const synthesizeSectionAudio = createServerFn({ method: "POST" })
       };
     }
 
+    // Helper: build word-level alignment from ElevenLabs character alignment.
+    function wordsFromAlignment(a: {
+      characters: string[];
+      character_start_times_seconds: number[];
+      character_end_times_seconds: number[];
+    }) {
+      const words: { text: string; start: number; end: number }[] = [];
+      let cur = "";
+      let curStart = 0;
+      for (let i = 0; i < a.characters.length; i++) {
+        const ch = a.characters[i];
+        const isSpace = /\s/.test(ch);
+        if (!isSpace) {
+          if (cur === "") curStart = a.character_start_times_seconds[i] ?? 0;
+          cur += ch;
+        }
+        if (isSpace || i === a.characters.length - 1) {
+          if (cur !== "") {
+            const endIdx = isSpace ? i - 1 : i;
+            words.push({
+              text: cur,
+              start: curStart,
+              end: a.character_end_times_seconds[endIdx] ?? curStart,
+            });
+            cur = "";
+          }
+        }
+      }
+      return words;
+    }
+
     // Verify the parent lesson belongs to this user (defensive — RLS already enforces).
     const { data: lesson } = await supabase
       .from("lessons")
@@ -56,7 +87,7 @@ export const synthesizeSectionAudio = createServerFn({ method: "POST" })
     if (!text.trim()) throw new Error("Section has no script to synthesize");
 
     const ttsResp = await fetch(
-      `https://api.elevenlabs.io/v1/text-to-speech/${DEFAULT_VOICE_ID}?output_format=${OUTPUT_FORMAT}`,
+      `https://api.elevenlabs.io/v1/text-to-speech/${DEFAULT_VOICE_ID}/with-timestamps?output_format=${OUTPUT_FORMAT}`,
       {
         method: "POST",
         headers: {
@@ -81,10 +112,30 @@ export const synthesizeSectionAudio = createServerFn({ method: "POST" })
       throw new Error(`ElevenLabs TTS failed (${ttsResp.status}): ${errText.slice(0, 200)}`);
     }
 
-    const audioBuf = await ttsResp.arrayBuffer();
+    const payload = (await ttsResp.json()) as {
+      audio_base64: string;
+      alignment?: {
+        characters: string[];
+        character_start_times_seconds: number[];
+        character_end_times_seconds: number[];
+      } | null;
+      normalized_alignment?: {
+        characters: string[];
+        character_start_times_seconds: number[];
+        character_end_times_seconds: number[];
+      } | null;
+    };
 
-    // Estimate duration from bitrate (128 kbps). Refined client-side once <audio> loads metadata.
-    const estimatedDurationMs = Math.round((audioBuf.byteLength * 8) / 128);
+    const audioBuf = Uint8Array.from(atob(payload.audio_base64), (c) => c.charCodeAt(0));
+
+    const align = payload.normalized_alignment ?? payload.alignment ?? null;
+    const words = align ? wordsFromAlignment(align) : [];
+    const lastWord = words[words.length - 1];
+    const alignedDurationMs = lastWord ? Math.round(lastWord.end * 1000) : null;
+
+    // Estimate duration from bitrate as a fallback.
+    const estimatedDurationMs =
+      alignedDurationMs ?? Math.round((audioBuf.byteLength * 8) / 128);
 
     const objectPath = `${section.lesson_id}/${section.id}.mp3`;
 
@@ -103,6 +154,7 @@ export const synthesizeSectionAudio = createServerFn({ method: "POST" })
         audio_path: objectPath,
         audio_duration_ms: estimatedDurationMs,
         audio_voice_id: DEFAULT_VOICE_ID,
+        audio_alignment: words.length > 0 ? { words } : null,
       })
       .eq("id", section.id);
     if (updErr) throw new Error(`Update failed: ${updErr.message}`);
@@ -128,18 +180,30 @@ export const getSectionAudioUrl = createServerFn({ method: "POST" })
 
     const { data: section, error } = await supabase
       .from("lesson_sections")
-      .select("audio_path, audio_duration_ms")
+      .select("audio_path, audio_duration_ms, audio_alignment")
       .eq("id", data.sectionId)
       .maybeSingle();
     if (error) throw new Error(error.message);
-    if (!section?.audio_path) return { url: null, audio_duration_ms: null as number | null };
+    if (!section?.audio_path) {
+      return {
+        url: null,
+        audio_duration_ms: null as number | null,
+        alignment: null as { words: { text: string; start: number; end: number }[] } | null,
+      };
+    }
 
     const { data: signed, error: signErr } = await supabaseAdmin.storage
       .from("lesson-audio")
       .createSignedUrl(section.audio_path, 60 * 60); // 1 hour
     if (signErr || !signed) throw new Error(signErr?.message ?? "Failed to sign URL");
 
-    return { url: signed.signedUrl, audio_duration_ms: section.audio_duration_ms };
+    return {
+      url: signed.signedUrl,
+      audio_duration_ms: section.audio_duration_ms,
+      alignment: (section.audio_alignment ?? null) as
+        | { words: { text: string; start: number; end: number }[] }
+        | null,
+    };
   });
 
 // Re-export hook for convenience
