@@ -4,7 +4,10 @@ import { supabase } from "@/integrations/supabase/client";
 import { apiUrl } from "@/lib/api";
 import { useSession } from "@/lib/auth";
 import { Whiteboard } from "@/components/whiteboard/Whiteboard";
-import { useSectionTimeline } from "@/components/whiteboard/useSectionTimeline";
+import { useAudioTimeline } from "@/components/whiteboard/useAudioTimeline";
+import { TransportBar } from "@/components/lesson/TransportBar";
+import { useServerFn } from "@tanstack/react-start";
+import { synthesizeSectionAudio, getSectionAudioUrl } from "@/lib/lesson-audio.functions";
 import { TutorOrb } from "@/components/lesson/TutorOrb";
 import { useTutorSpeech } from "@/components/lesson/useTutorSpeech";
 import { summarize } from "@/components/whiteboard/WhiteboardElement";
@@ -41,6 +44,8 @@ interface SectionRow {
   estimated_duration_s: number;
   whiteboard: WhiteboardEvent[];
   sources: { title: string; url: string }[];
+  audio_path: string | null;
+  audio_duration_ms: number | null;
 }
 interface MessageRow {
   id: string;
@@ -66,7 +71,17 @@ function LessonView() {
 
   const tutor = useTutorSpeech();
   const activeSection = sections[activeIdx];
-  const timeline = useSectionTimeline(activeSection?.id ?? null, false);
+
+  // Audio synthesis + signed URL management
+  const synthesize = useServerFn(synthesizeSectionAudio);
+  const getAudioUrl = useServerFn(getSectionAudioUrl);
+  const [audioUrl, setAudioUrl] = useState<string | null>(null);
+  const [audioLoading, setAudioLoading] = useState(false);
+
+  const fallbackDurationMs = activeSection
+    ? activeSection.audio_duration_ms ?? activeSection.estimated_duration_s * 1000
+    : null;
+  const timeline = useAudioTimeline(audioUrl, fallbackDurationMs);
 
   // Auth gate
   useEffect(() => {
@@ -106,18 +121,61 @@ function LessonView() {
     };
   }, [lessonId]);
 
-  // When section changes, speak it
+  // When the active section changes: stop browser TTS, fetch/synthesize audio.
   useEffect(() => {
     if (!activeSection) return;
+    let cancelled = false;
     tutor.stop();
-    timeline.reset();
-    timeline.play();
-    tutor.speak(activeSection.script, () => {
-      timeline.pause();
-    });
-    return () => tutor.stop();
+    setAudioUrl(null);
+    setAudioLoading(true);
+
+    (async () => {
+      try {
+        // 1. See if audio already exists.
+        let res = await getAudioUrl({ data: { sectionId: activeSection.id } });
+        // 2. If not, synthesize then fetch URL.
+        if (!res.url) {
+          await synthesize({ data: { sectionId: activeSection.id } });
+          res = await getAudioUrl({ data: { sectionId: activeSection.id } });
+        }
+        if (cancelled) return;
+        if (res.url) {
+          setAudioUrl(res.url);
+          // Patch local section row so subsequent visits use the cached duration
+          setSections((prev) =>
+            prev.map((s) =>
+              s.id === activeSection.id
+                ? { ...s, audio_duration_ms: res.audio_duration_ms ?? s.audio_duration_ms }
+                : s,
+            ),
+          );
+        } else {
+          // Fall back to browser TTS so the lesson is still playable.
+          tutor.speak(activeSection.script);
+        }
+      } catch (err) {
+        if (cancelled) return;
+        console.error("Audio synthesis failed", err);
+        // Fallback to browser TTS
+        tutor.speak(activeSection.script);
+      } finally {
+        if (!cancelled) setAudioLoading(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+      tutor.stop();
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeSection?.id]);
+
+  // Auto-play once audio URL is ready
+  useEffect(() => {
+    if (audioUrl) timeline.play();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [audioUrl]);
+
 
   // Visible events at the current elapsed time (mirrors Whiteboard's filter)
   const visibleEvents = useMemo(() => {
@@ -148,12 +206,12 @@ function LessonView() {
   }
 
   function togglePlay() {
-    if (tutor.speaking) {
-      tutor.pause();
+    if (timeline.playing) {
       timeline.pause();
+      tutor.pause();
     } else {
-      tutor.resume();
       timeline.play();
+      tutor.resume();
     }
   }
 
@@ -284,15 +342,38 @@ function LessonView() {
 
       {/* Main */}
       <div className="relative z-10 flex flex-1 flex-col gap-4 px-4 py-4 md:flex-row md:px-6 md:py-5">
-        {/* Whiteboard (centerpiece) */}
-        <div className="relative flex-1 min-h-[440px] md:min-h-0">
-          <Whiteboard
-            events={activeSection?.whiteboard ?? []}
+        {/* Whiteboard (centerpiece) + transport */}
+        <div className="relative flex flex-1 flex-col gap-3 min-h-[440px] md:min-h-0">
+          <div className="relative flex-1 min-h-[360px]">
+            <Whiteboard
+              events={activeSection?.whiteboard ?? []}
+              elapsed={timeline.elapsed}
+              selectedIds={selectedIds}
+              onToggleSelect={toggleSelect}
+              onClearSelection={() => setSelectedIds([])}
+              sectionHeading={activeSection?.heading ?? ""}
+            />
+          </div>
+          <TransportBar
             elapsed={timeline.elapsed}
-            selectedIds={selectedIds}
-            onToggleSelect={toggleSelect}
-            onClearSelection={() => setSelectedIds([])}
-            sectionHeading={activeSection?.heading ?? ""}
+            duration={timeline.duration}
+            playing={timeline.playing}
+            rate={timeline.rate}
+            loading={audioLoading}
+            canPrev={activeIdx > 0}
+            canNext={activeIdx < sections.length - 1}
+            onPlay={() => {
+              timeline.play();
+              tutor.resume();
+            }}
+            onPause={() => {
+              timeline.pause();
+              tutor.pause();
+            }}
+            onSeek={(s) => timeline.seek(s)}
+            onPrev={() => jumpTo(Math.max(0, activeIdx - 1))}
+            onNext={() => jumpTo(Math.min(sections.length - 1, activeIdx + 1))}
+            onRateChange={(r) => timeline.setRate(r)}
           />
         </div>
 
@@ -349,13 +430,13 @@ function LessonView() {
 
           {/* Tutor stage */}
           <div className="relative flex h-40 items-center justify-center overflow-hidden rounded-2xl border border-border/60 bg-card/50 backdrop-blur">
-            <TutorOrb speaking={tutor.speaking} thinking={asking} amplitude={tutor.amplitude} />
+            <TutorOrb speaking={timeline.playing || tutor.speaking} thinking={asking || audioLoading} amplitude={tutor.amplitude} />
             <button
               onClick={togglePlay}
               className="absolute bottom-3 right-3 inline-flex items-center gap-1.5 rounded-full bg-primary px-3 py-1.5 text-xs text-primary-foreground transition hover:brightness-105"
             >
-              {tutor.speaking ? <Pause className="h-3 w-3" /> : <Play className="h-3 w-3" />}
-              {tutor.speaking ? "Pause" : "Resume"}
+              {timeline.playing ? <Pause className="h-3 w-3" /> : <Play className="h-3 w-3" />}
+              {timeline.playing ? "Pause" : "Resume"}
             </button>
           </div>
 
