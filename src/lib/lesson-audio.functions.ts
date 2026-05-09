@@ -40,6 +40,37 @@ export const synthesizeSectionAudio = createServerFn({ method: "POST" })
       };
     }
 
+    // Helper: build word-level alignment from ElevenLabs character alignment.
+    function wordsFromAlignment(a: {
+      characters: string[];
+      character_start_times_seconds: number[];
+      character_end_times_seconds: number[];
+    }) {
+      const words: { text: string; start: number; end: number }[] = [];
+      let cur = "";
+      let curStart = 0;
+      for (let i = 0; i < a.characters.length; i++) {
+        const ch = a.characters[i];
+        const isSpace = /\s/.test(ch);
+        if (!isSpace) {
+          if (cur === "") curStart = a.character_start_times_seconds[i] ?? 0;
+          cur += ch;
+        }
+        if (isSpace || i === a.characters.length - 1) {
+          if (cur !== "") {
+            const endIdx = isSpace ? i - 1 : i;
+            words.push({
+              text: cur,
+              start: curStart,
+              end: a.character_end_times_seconds[endIdx] ?? curStart,
+            });
+            cur = "";
+          }
+        }
+      }
+      return words;
+    }
+
     // Verify the parent lesson belongs to this user (defensive — RLS already enforces).
     const { data: lesson } = await supabase
       .from("lessons")
