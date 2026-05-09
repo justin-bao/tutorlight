@@ -1,106 +1,98 @@
-## Revised vision
+## Goal
 
-The **virtual whiteboard** is the centerpiece of every lesson. It's a live, dynamic canvas that the AI tutor "draws on" as they teach — building up diagrams, equations, labeled illustrations, key terms, and reference images step by step in sync with what they're saying. Learners can also point at, reference, and ask about anything on the whiteboard.
+After a lesson is generated, persist both the **tutor audio** (from ElevenLabs) and the **whiteboard event timeline** so the lesson can be replayed deterministically — with full scrubbing, pause/resume, and per-section seek.
 
-Think: a calm studio with a tutor speaking, and a generous whiteboard that fills with hand-drawn-feeling visuals as the lesson unfolds.
+Today the whiteboard timeline is already saved per section (`lesson_sections.whiteboard` jsonb with `at` timestamps), but:
+- Audio is generated live via the browser's `speechSynthesis` and is not stored.
+- The timeline clock is local-only and not synced to an audio element.
+- There are no scrub/seek controls — only Pause/Resume.
 
-## Layout
+This plan wires audio storage + an audio-driven timeline + a transport bar.
 
-```
-┌─────────────────────────────┬──────────────┐
-│                             │  Outline     │
-│         WHITEBOARD          │  • Section 1 │
-│   (large, center stage)     │  • Section 2◄│
-│                             │  • Section 3 │
-│   diagrams build in as      │              │
-│   tutor speaks              ├──────────────┤
-│                             │  Tutor       │
-│                             │  (avatar orb │
-│                             │   + voice)   │
-├─────────────────────────────┴──────────────┤
-│  Ask a question…  [mic]  [send]            │
-└────────────────────────────────────────────┘
-```
+---
 
-The avatar is smaller and to the side — a presence, not the spectacle. The whiteboard is the spectacle.
+## 1. Storage: audio files
 
-## How the whiteboard works
+Create a private Supabase Storage bucket `lesson-audio`.
 
-Each lesson section's generated content includes a **whiteboard script**: an ordered list of "draw events" the tutor performs while speaking. Event types:
-
-- `title` — heading lands on the board
-- `bullet` — labeled point appears, optionally beneath a heading
-- `definition` — term + definition card
-- `equation` — rendered math (KaTeX)
-- `diagram` — generated SVG diagram (boxes, arrows, flow, cycle, tree, axis) with labels — described declaratively by the LLM, rendered by a typed React component
-- `image` — generated or web image with caption
-- `code` — syntax-highlighted snippet
-- `annotation` — arrow/circle/highlight pointing to a previous element (referenced by id)
-- `clear` — wipe the board for the next sub-topic
-
-Each event has a `at` timestamp (in seconds from section start) so it appears in sync with the tutor's voice. Events animate in with a subtle ink/spring entrance, giving the "being drawn" feel.
-
-The whiteboard accumulates within a section, then transitions on section change. Users can **scroll back through previous sections' boards** (read-only history).
-
-### "Reference this" interaction
-
-Every element on the whiteboard is hoverable. Clicking one **pins it as context** for the next question — the chip appears in the question input ("About: *Krebs cycle diagram*"). The Q&A edge function then sends that element's data along with the question so the tutor's answer is grounded in exactly what the user pointed at.
-
-## LLM contract
-
-`generate-lesson` produces structured JSON via tool calling:
-
-```ts
-{
-  title, summary,
-  sections: [{
-    heading,
-    script,                   // what the tutor says
-    estimated_duration_s,     // for pacing the whiteboard timeline
-    whiteboard: [             // ordered, with `at` seconds
-      { id, at, type: "title" | "bullet" | ... , ...payload }
-    ],
-    sources: [{ title, url }]
-  }]
-}
+```text
+lesson-audio/
+  {lessonId}/
+    {sectionId}.mp3
 ```
 
-The LLM is prompted to think of itself as a teacher planning what they'll write on the board while speaking — every key idea in the script should map to a whiteboard event.
+RLS: a user can read/write objects only when the `{lessonId}` folder belongs to a lesson they own (checked via `lessons.user_id = auth.uid()`).
 
-For images inside the whiteboard, the LLM emits an `image_prompt`; on the server we generate via Lovable AI's image model (`google/gemini-3-flash-image-preview`) and store the result.
+Add columns to `lesson_sections`:
+- `audio_path text` — storage object path (e.g. `abc/def.mp3`)
+- `audio_duration_ms integer` — exact duration for the scrubber
+- `audio_voice_id text` — which ElevenLabs voice was used (for cache invalidation)
 
-## Tutor sync
+## 2. Generation pipeline (server function)
 
-ElevenLabs Conversational AI speaks the section script. We start a section-local clock when the agent begins speaking, and the whiteboard component plays back its events against that clock. If the user interrupts to ask a question:
+New server function `synthesizeSectionAudio` in `src/lib/lesson-audio.functions.ts`:
 
-- Whiteboard pauses (events freeze where they are).
-- Agent overrides switch to "answer mode" with the lesson + section + pinned-element context.
-- Optional: the tutor can add 1–2 *ad-hoc* whiteboard events during the answer (the Q&A function may return a small `whiteboard_addendum` array — annotation, definition, or quick diagram).
-- Resume button continues the section from where it paused.
+1. Loads the section's `script`.
+2. Calls ElevenLabs TTS REST API (`/v1/text-to-speech/{voice_id}`) with the `ELEVENLABS_API_KEY` secret — returns mp3 bytes.
+3. Uploads bytes to `lesson-audio/{lessonId}/{sectionId}.mp3` via `supabaseAdmin.storage`.
+4. Probes duration (decode header / use returned `Content-Length` + bitrate, or use `music-metadata` lite parser).
+5. Updates `lesson_sections` with `audio_path` and `audio_duration_ms`.
 
-## Tech additions vs the prior plan
+Hook this into `generate-lesson.ts` after the lesson sections are inserted: kick off audio synthesis in parallel for all sections, mark `lessons.status = 'ready'` only when text is ready (audio can stream in progressively — sections without audio fall back to browser TTS).
 
-- **KaTeX** for equations
-- **Custom SVG diagram renderer** (`<DiagramFlow>`, `<DiagramCycle>`, `<DiagramAxis>`, etc.) driven by declarative JSON — no third-party diagramming dep needed for v1
-- **Whiteboard timeline engine** — small hook that maps elapsed seconds → visible events
-- **Image generation** via Lovable AI for whiteboard images, stored in Cloud storage
-- DB additions: `lesson_sections.whiteboard` jsonb, `lesson_messages.pinned_element_id` text
+## 3. Timeline rewrite: drive from audio
 
-## Updated build order
+Replace `useSectionTimeline` with `useAudioTimeline(audioUrl, fallbackDuration)`:
+- Owns a single `<audio>` element ref.
+- Exposes `{ elapsed, duration, playing, play, pause, seek(s), playbackRate, setRate }`.
+- `elapsed` updates from the audio element's `timeupdate` (plus a rAF tick for smooth scrubbing).
+- When `audioUrl` is null (still synthesizing or failed), falls back to the current browser-TTS clock.
 
-1. Cloud + auth + DB schema (with whiteboard field)
-2. Design system + landing prompt page
-3. `generate-lesson` edge function with whiteboard event schema
-4. Whiteboard renderer: layout, element components (title/bullet/definition/equation/diagram/image/code/annotation), entrance animations, hover/pin interaction
-5. Lesson view: outline + whiteboard + small avatar + question bar
-6. ElevenLabs token function + `useConversation` wired to section scripts
-7. Timeline engine syncing whiteboard events to the speaking tutor
-8. `lesson-qa` function with pinned-element grounding + optional `whiteboard_addendum`
-9. "My lessons" page + polish
+The whiteboard's existing `events.filter(e => e.at <= elapsed)` logic stays — it already supports arbitrary seek because `at` is absolute seconds within the section.
 
-## Secrets needed (later, when we get to the integration step)
+## 4. Transport / scrub bar (UI)
 
-- `ELEVENLABS_API_KEY` + an Agent ID created in their ElevenLabs dashboard — I'll walk the user through this when we reach step 6.
-- `LOVABLE_API_KEY` — auto-provisioned with Cloud.
+New `TransportBar` component, mounted under the whiteboard:
 
-Ready to start building from step 1 (Cloud + design system + landing) on approval. The whiteboard is the centerpiece — I'll spend extra craft on its element components and entrance animations so it really feels like a living teaching surface.
+```text
+[ ⏮ ][ ▶/⏸ ][ ⏭ ]   ━━━━●─────────────  02:14 / 04:38   [1x ▾]
+```
+
+- Uses shadcn `Slider` for the scrub track (already in project).
+- Click/drag the slider → `timeline.seek(value)` → audio jumps → whiteboard re-derives visible events instantly.
+- Prev/Next jump between sections.
+- Speed menu: 0.75x / 1x / 1.25x / 1.5x / 2x — sets `audio.playbackRate`.
+- Keyboard: Space = play/pause, ←/→ = ±5s, J/L = ±10s.
+
+## 5. Lesson view integration
+
+In `src/routes/lesson.$lessonId.tsx`:
+- Build a signed URL for `activeSection.audio_path` on section change (1h expiry).
+- Pass it to `useAudioTimeline`.
+- Remove the `useTutorSpeech.speak(script)` call when audio exists; keep `useTutorSpeech` only as fallback.
+- Drive `TutorOrb`'s amplitude from the audio element via Web Audio `AnalyserNode` instead of speech-synthesis events.
+- When user asks a Q&A question, still use browser TTS for the answer (separate, ephemeral).
+
+## 6. Caching & re-gen
+
+- If `audio_path` already exists for a section, skip synthesis (idempotent).
+- Add a "Regenerate audio" action (later, not in this pass) for voice changes.
+
+---
+
+## Technical notes
+
+- **Secret needed:** `ELEVENLABS_API_KEY` (will request via `add_secret` when you're ready). Voice ID can live in code as a constant initially.
+- **Duration probing:** ElevenLabs returns `mp3_44100_128` by default — duration ≈ `bytes * 8 / 128000`. Good enough for scrubber bounds; refined client-side once `<audio>` reports `loadedmetadata`.
+- **Streaming option (future):** ElevenLabs also has a streaming endpoint we could pipe directly to the client and store async — out of scope for this pass.
+- **Bucket created via migration** with RLS using a `has_lesson_access(lesson_id)` SECURITY DEFINER helper to keep storage policies readable.
+
+---
+
+## Out of scope (call out for later)
+
+- Word-level highlighting on the whiteboard (would need ElevenLabs alignment API).
+- Background pre-fetching audio for the next section.
+- Offline caching of audio in IndexedDB.
+
+Approve this and I'll implement it in the order above (migration → server function → timeline hook → transport UI → lesson view wiring). I'll request `ELEVENLABS_API_KEY` right before the server function step.
