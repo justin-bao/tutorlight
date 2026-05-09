@@ -342,15 +342,38 @@ function LessonView() {
 
       {/* Main */}
       <div className="relative z-10 flex flex-1 flex-col gap-4 px-4 py-4 md:flex-row md:px-6 md:py-5">
-        {/* Whiteboard (centerpiece) */}
-        <div className="relative flex-1 min-h-[440px] md:min-h-0">
-          <Whiteboard
-            events={activeSection?.whiteboard ?? []}
+        {/* Whiteboard (centerpiece) + transport */}
+        <div className="relative flex flex-1 flex-col gap-3 min-h-[440px] md:min-h-0">
+          <div className="relative flex-1 min-h-[360px]">
+            <Whiteboard
+              events={activeSection?.whiteboard ?? []}
+              elapsed={timeline.elapsed}
+              selectedIds={selectedIds}
+              onToggleSelect={toggleSelect}
+              onClearSelection={() => setSelectedIds([])}
+              sectionHeading={activeSection?.heading ?? ""}
+            />
+          </div>
+          <TransportBar
             elapsed={timeline.elapsed}
-            selectedIds={selectedIds}
-            onToggleSelect={toggleSelect}
-            onClearSelection={() => setSelectedIds([])}
-            sectionHeading={activeSection?.heading ?? ""}
+            duration={timeline.duration}
+            playing={timeline.playing}
+            rate={timeline.rate}
+            loading={audioLoading}
+            canPrev={activeIdx > 0}
+            canNext={activeIdx < sections.length - 1}
+            onPlay={() => {
+              timeline.play();
+              tutor.resume();
+            }}
+            onPause={() => {
+              timeline.pause();
+              tutor.pause();
+            }}
+            onSeek={(s) => timeline.seek(s)}
+            onPrev={() => jumpTo(Math.max(0, activeIdx - 1))}
+            onNext={() => jumpTo(Math.min(sections.length - 1, activeIdx + 1))}
+            onRateChange={(r) => timeline.setRate(r)}
           />
         </div>
 
