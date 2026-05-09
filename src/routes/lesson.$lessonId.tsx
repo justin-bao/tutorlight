@@ -206,12 +206,12 @@ function LessonView() {
   }
 
   function togglePlay() {
-    if (tutor.speaking) {
-      tutor.pause();
+    if (timeline.playing) {
       timeline.pause();
+      tutor.pause();
     } else {
-      tutor.resume();
       timeline.play();
+      tutor.resume();
     }
   }
 
