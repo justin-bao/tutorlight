@@ -64,6 +64,9 @@ export type Database = {
       }
       lesson_sections: {
         Row: {
+          audio_duration_ms: number | null
+          audio_path: string | null
+          audio_voice_id: string | null
           created_at: string
           estimated_duration_s: number
           heading: string
@@ -75,6 +78,9 @@ export type Database = {
           whiteboard: Json
         }
         Insert: {
+          audio_duration_ms?: number | null
+          audio_path?: string | null
+          audio_voice_id?: string | null
           created_at?: string
           estimated_duration_s?: number
           heading: string
@@ -86,6 +92,9 @@ export type Database = {
           whiteboard?: Json
         }
         Update: {
+          audio_duration_ms?: number | null
+          audio_path?: string | null
+          audio_voice_id?: string | null
           created_at?: string
           estimated_duration_s?: number
           heading?: string
@@ -162,7 +171,7 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      has_lesson_access: { Args: { _lesson_id: string }; Returns: boolean }
     }
     Enums: {
       [_ in never]: never
