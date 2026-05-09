@@ -10,6 +10,7 @@ import { useServerFn } from "@tanstack/react-start";
 import { synthesizeSectionAudio, getSectionAudioUrl } from "@/lib/lesson-audio.functions";
 import { TutorOrb } from "@/components/lesson/TutorOrb";
 import { useTutorSpeech } from "@/components/lesson/useTutorSpeech";
+import { Transcript, type TranscriptWord } from "@/components/lesson/Transcript";
 import { summarize } from "@/components/whiteboard/WhiteboardElement";
 import type { WhiteboardEvent } from "@/lib/whiteboard-types";
 import {
