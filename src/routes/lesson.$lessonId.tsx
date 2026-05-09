@@ -129,6 +129,7 @@ function LessonView() {
     let cancelled = false;
     tutor.stop();
     setAudioUrl(null);
+    setTranscriptWords(null);
     setAudioLoading(true);
 
     (async () => {
@@ -143,6 +144,7 @@ function LessonView() {
         if (cancelled) return;
         if (res.url) {
           setAudioUrl(res.url);
+          setTranscriptWords(res.alignment?.words ?? null);
           // Patch local section row so subsequent visits use the cached duration
           setSections((prev) =>
             prev.map((s) =>
