@@ -430,13 +430,13 @@ function LessonView() {
 
           {/* Tutor stage */}
           <div className="relative flex h-40 items-center justify-center overflow-hidden rounded-2xl border border-border/60 bg-card/50 backdrop-blur">
-            <TutorOrb speaking={tutor.speaking} thinking={asking} amplitude={tutor.amplitude} />
+            <TutorOrb speaking={timeline.playing || tutor.speaking} thinking={asking || audioLoading} amplitude={tutor.amplitude} />
             <button
               onClick={togglePlay}
               className="absolute bottom-3 right-3 inline-flex items-center gap-1.5 rounded-full bg-primary px-3 py-1.5 text-xs text-primary-foreground transition hover:brightness-105"
             >
-              {tutor.speaking ? <Pause className="h-3 w-3" /> : <Play className="h-3 w-3" />}
-              {tutor.speaking ? "Pause" : "Resume"}
+              {timeline.playing ? <Pause className="h-3 w-3" /> : <Play className="h-3 w-3" />}
+              {timeline.playing ? "Pause" : "Resume"}
             </button>
           </div>
 
