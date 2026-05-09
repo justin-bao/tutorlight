@@ -44,6 +44,8 @@ interface SectionRow {
   estimated_duration_s: number;
   whiteboard: WhiteboardEvent[];
   sources: { title: string; url: string }[];
+  audio_path: string | null;
+  audio_duration_ms: number | null;
 }
 interface MessageRow {
   id: string;
