@@ -34,6 +34,7 @@ const LessonLessonIdRoute = LessonLessonIdRouteImport.update({
   path: '/lesson/$lessonId',
   getParentRoute: () => rootRouteImport,
 } as any)
+
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/auth': typeof AuthRoute
@@ -55,23 +56,10 @@ export interface FileRoutesById {
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths:
-    | '/'
-    | '/auth'
-    | '/lessons'
-    | '/lesson/$lessonId'
+  fullPaths: '/' | '/auth' | '/lessons' | '/lesson/$lessonId'
   fileRoutesByTo: FileRoutesByTo
-  to:
-    | '/'
-    | '/auth'
-    | '/lessons'
-    | '/lesson/$lessonId'
-  id:
-    | '__root__'
-    | '/'
-    | '/auth'
-    | '/lessons'
-    | '/lesson/$lessonId'
+  to: '/' | '/auth' | '/lessons' | '/lesson/$lessonId'
+  id: '__root__' | '/' | '/auth' | '/lessons' | '/lesson/$lessonId'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
