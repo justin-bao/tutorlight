@@ -379,6 +379,12 @@ function LessonView() {
             onNext={() => jumpTo(Math.min(sections.length - 1, activeIdx + 1))}
             onRateChange={(r) => timeline.setRate(r)}
           />
+          <Transcript
+            words={transcriptWords}
+            fallbackText={activeSection?.script ?? ""}
+            elapsed={timeline.elapsed}
+            onSeek={(s) => timeline.seek(s)}
+          />
         </div>
 
         {/* Right column */}
