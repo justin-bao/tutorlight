@@ -78,6 +78,7 @@ function LessonView() {
   const getAudioUrl = useServerFn(getSectionAudioUrl);
   const [audioUrl, setAudioUrl] = useState<string | null>(null);
   const [audioLoading, setAudioLoading] = useState(false);
+  const [transcriptWords, setTranscriptWords] = useState<TranscriptWord[] | null>(null);
 
   const fallbackDurationMs = activeSection
     ? activeSection.audio_duration_ms ?? activeSection.estimated_duration_s * 1000
