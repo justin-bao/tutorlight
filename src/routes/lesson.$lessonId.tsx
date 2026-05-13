@@ -279,6 +279,7 @@ function LessonView() {
             type: e.type,
             summary: summarize(e),
           })),
+          availableSources: activeSection.sources ?? [],
           elapsedSeconds: elapsed,
           spokenSoFar: spokenSoFar || undefined,
           recentEmphasis: recentEmphasis || undefined,
@@ -294,6 +295,10 @@ function LessonView() {
           content: data.answer,
           section_id: activeSection.id,
           created_at: new Date().toISOString(),
+          whiteboard_addendum: {
+            citedBoardIds: data.citedBoardIds ?? [],
+            citedSourceUrls: data.citedSourceUrls ?? [],
+          },
         },
       ]);
       setSelectedIds([]);
