@@ -54,6 +54,7 @@ interface MessageRow {
   content: string;
   section_id: string | null;
   created_at: string;
+  whiteboard_addendum?: { citedBoardIds?: string[]; citedSourceUrls?: string[] } | null;
 }
 
 function LessonView() {
