@@ -93,6 +93,9 @@ class LessonQaInput(BaseModel):
     question: str = Field(min_length=1, max_length=800)
     pinnedElements: list[BoardRef] = Field(default_factory=list)
     whiteboardSnapshot: list[BoardRef] = Field(default_factory=list)
+    elapsedSeconds: float | None = None
+    spokenSoFar: str | None = Field(default=None, max_length=8000)
+    recentEmphasis: str | None = Field(default=None, max_length=2000)
 
 
 VALID_TYPES = {"title", "bullet", "definition", "equation", "diagram", "image", "code", "annotation", "clear"}
