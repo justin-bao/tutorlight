@@ -476,7 +476,10 @@ function LessonView() {
           <div className="flex min-h-0 flex-1 flex-col rounded-2xl border border-border/60 bg-card/50 p-3 backdrop-blur">
             <div className="mb-2 flex items-center justify-between px-1">
               <div className="text-xs uppercase tracking-widest text-muted-foreground">Ask the tutor</div>
-              <Sparkles className="h-3.5 w-3.5 text-primary" />
+              <div className="flex items-center gap-1.5 rounded-full bg-secondary/70 px-2 py-0.5 text-[10px] font-medium text-muted-foreground">
+                <Sparkles className="h-3 w-3 text-primary" />
+                Follow-up @ {Math.floor(timeline.elapsed / 60)}:{String(Math.floor(timeline.elapsed % 60)).padStart(2, "0")}
+              </div>
             </div>
             <div className="flex-1 space-y-2 overflow-y-auto px-1 pb-2 text-sm">
               {sectionMessages.length === 0 && (
