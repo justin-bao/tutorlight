@@ -242,6 +242,25 @@ function LessonView() {
 
     try {
       const token = (await supabase.auth.getSession()).data.session?.access_token ?? "";
+
+      // Build follow-up context: text the learner has actually heard up to `elapsed`.
+      const elapsed = timeline.elapsed;
+      let spokenSoFar = "";
+      if (transcriptWords && transcriptWords.length > 0) {
+        spokenSoFar = transcriptWords
+          .filter((w) => w.start <= elapsed)
+          .map((w) => w.text)
+          .join(" ")
+          .trim();
+      } else if (activeSection.script) {
+        const dur = (activeSection.audio_duration_ms ?? activeSection.estimated_duration_s * 1000) / 1000;
+        const ratio = dur > 0 ? Math.min(1, Math.max(0, elapsed / dur)) : 1;
+        const cutoff = Math.floor(activeSection.script.length * ratio);
+        spokenSoFar = activeSection.script.slice(0, cutoff).trim();
+      }
+      // Emphasize the last ~30 spoken words — that's the moment the learner paused to ask.
+      const recentEmphasis = spokenSoFar.split(/\s+/).slice(-30).join(" ");
+
       const resp = await fetch(apiUrl("/api/lesson-qa"), {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
@@ -259,6 +278,9 @@ function LessonView() {
             type: e.type,
             summary: summarize(e),
           })),
+          elapsedSeconds: elapsed,
+          spokenSoFar: spokenSoFar || undefined,
+          recentEmphasis: recentEmphasis || undefined,
         }),
       });
       const data = await resp.json();
@@ -454,7 +476,10 @@ function LessonView() {
           <div className="flex min-h-0 flex-1 flex-col rounded-2xl border border-border/60 bg-card/50 p-3 backdrop-blur">
             <div className="mb-2 flex items-center justify-between px-1">
               <div className="text-xs uppercase tracking-widest text-muted-foreground">Ask the tutor</div>
-              <Sparkles className="h-3.5 w-3.5 text-primary" />
+              <div className="flex items-center gap-1.5 rounded-full bg-secondary/70 px-2 py-0.5 text-[10px] font-medium text-muted-foreground">
+                <Sparkles className="h-3 w-3 text-primary" />
+                Follow-up @ {Math.floor(timeline.elapsed / 60)}:{String(Math.floor(timeline.elapsed % 60)).padStart(2, "0")}
+              </div>
             </div>
             <div className="flex-1 space-y-2 overflow-y-auto px-1 pb-2 text-sm">
               {sectionMessages.length === 0 && (
