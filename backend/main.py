@@ -537,14 +537,36 @@ async def lesson_qa(body: LessonQaInput, authorization: str | None = Header(defa
                 f"  - ({item.type}) {item.summary}" for item in body.pinnedElements
             )
 
+        timeline_context = ""
+        if body.spokenSoFar:
+            elapsed_label = (
+                f" (paused at {body.elapsedSeconds:.1f}s into the section)"
+                if body.elapsedSeconds is not None
+                else ""
+            )
+            timeline_context = f"\n\nWhat the learner has heard so far in this section{elapsed_label}:\n{body.spokenSoFar}"
+        if body.recentEmphasis:
+            timeline_context += (
+                "\n\n*** MOST RECENT WORDS — the learner asked their question right after hearing this, "
+                "so weigh this passage most heavily when answering: ***\n"
+                f"{body.recentEmphasis}"
+            )
+
         lesson_row = lesson[0]
         section_row = section[0]
+        full_script = section_row.get("script") or ""
+        # In follow-up mode, hide the rest of the script the learner hasn't reached yet.
+        script_block = (
+            f"Section script you just delivered: {full_script}"
+            if not body.spokenSoFar
+            else "(See the timeline excerpt below — do not reference content the learner hasn't heard yet.)"
+        )
         system_prompt = f"""You are the AI tutor mid-lesson. Answer the learner's question briefly and conversationally in 2-4 sentences. Stay grounded in the current lesson context. Speak as if continuing the live lesson, with no preamble.
 
 Lesson: {lesson_row.get("title")}
 Summary: {lesson_row.get("summary")}
 Current section: {section_row.get("heading")}
-Section script you just delivered: {section_row.get("script")}{board_context}{pinned_context}"""
+{script_block}{board_context}{pinned_context}{timeline_context}"""
 
         ai_json = await ai_chat({
             "model": AI_MODEL,
