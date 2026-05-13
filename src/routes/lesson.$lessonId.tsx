@@ -54,6 +54,7 @@ interface MessageRow {
   content: string;
   section_id: string | null;
   created_at: string;
+  whiteboard_addendum?: { citedBoardIds?: string[]; citedSourceUrls?: string[] } | null;
 }
 
 function LessonView() {
@@ -278,6 +279,7 @@ function LessonView() {
             type: e.type,
             summary: summarize(e),
           })),
+          availableSources: activeSection.sources ?? [],
           elapsedSeconds: elapsed,
           spokenSoFar: spokenSoFar || undefined,
           recentEmphasis: recentEmphasis || undefined,
@@ -293,6 +295,10 @@ function LessonView() {
           content: data.answer,
           section_id: activeSection.id,
           created_at: new Date().toISOString(),
+          whiteboard_addendum: {
+            citedBoardIds: data.citedBoardIds ?? [],
+            citedSourceUrls: data.citedSourceUrls ?? [],
+          },
         },
       ]);
       setSelectedIds([]);
@@ -487,18 +493,57 @@ function LessonView() {
                   Click any item on the whiteboard to reference it — Shift/Cmd-click to select multiple.
                 </p>
               )}
-              {sectionMessages.map((m) => (
-                <div
-                  key={m.id}
-                  className={`rounded-xl px-3 py-2 ${
-                    m.role === "user"
-                      ? "ml-4 bg-primary/15 text-foreground"
-                      : "mr-4 bg-secondary text-foreground"
-                  }`}
-                >
-                  {m.content}
-                </div>
-              ))}
+              {sectionMessages.map((m) => {
+                const cited = m.whiteboard_addendum;
+                const boardMap = new Map((activeSection?.whiteboard ?? []).map((e) => [e.id, e]));
+                const sourceMap = new Map((activeSection?.sources ?? []).map((s) => [s.url, s]));
+                const citedBoard = (cited?.citedBoardIds ?? [])
+                  .map((id) => boardMap.get(id))
+                  .filter(Boolean) as WhiteboardEvent[];
+                const citedSources = (cited?.citedSourceUrls ?? [])
+                  .map((u) => sourceMap.get(u))
+                  .filter(Boolean) as { title: string; url: string }[];
+                return (
+                  <div
+                    key={m.id}
+                    className={`rounded-xl px-3 py-2 ${
+                      m.role === "user"
+                        ? "ml-4 bg-primary/15 text-foreground"
+                        : "mr-4 bg-secondary text-foreground"
+                    }`}
+                  >
+                    <div>{m.content}</div>
+                    {m.role === "assistant" && (citedBoard.length > 0 || citedSources.length > 0) && (
+                      <div className="mt-2 flex flex-wrap gap-1.5 border-t border-border/50 pt-2 text-[11px]">
+                        {citedBoard.map((e) => (
+                          <button
+                            key={`b-${e.id}`}
+                            onClick={() => setSelectedIds([e.id])}
+                            title={summarize(e)}
+                            className="inline-flex max-w-[180px] items-center gap-1 rounded-full bg-primary/15 px-2 py-0.5 text-foreground transition hover:bg-primary/25"
+                          >
+                            <Sparkles className="h-2.5 w-2.5 text-primary" />
+                            <span className="truncate">{summarize(e)}</span>
+                          </button>
+                        ))}
+                        {citedSources.map((s) => (
+                          <a
+                            key={`s-${s.url}`}
+                            href={s.url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            title={s.url}
+                            className="inline-flex max-w-[180px] items-center gap-1 rounded-full bg-background/60 px-2 py-0.5 text-muted-foreground transition hover:bg-background hover:text-foreground"
+                          >
+                            <ExternalLink className="h-2.5 w-2.5" />
+                            <span className="truncate">{s.title}</span>
+                          </a>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
             </div>
 
             {selectedEvents.length > 0 && (

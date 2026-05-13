@@ -93,9 +93,36 @@ class LessonQaInput(BaseModel):
     question: str = Field(min_length=1, max_length=800)
     pinnedElements: list[BoardRef] = Field(default_factory=list)
     whiteboardSnapshot: list[BoardRef] = Field(default_factory=list)
+    availableSources: list[Source] = Field(default_factory=list, max_length=12)
     elapsedSeconds: float | None = None
     spokenSoFar: str | None = Field(default=None, max_length=8000)
     recentEmphasis: str | None = Field(default=None, max_length=2000)
+
+
+QA_TOOL_SCHEMA: dict[str, Any] = {
+    "type": "function",
+    "function": {
+        "name": "respond_with_citations",
+        "description": "Answer the learner's follow-up question, citing whiteboard items and sources that informed the answer.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "answer": {"type": "string", "description": "2-4 sentence conversational answer."},
+                "citedBoardIds": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Whiteboard item ids (from the snapshot) you actually relied on. Empty if none.",
+                },
+                "citedSourceUrls": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Source URLs (from the available sources list) you actually relied on. Empty if none.",
+                },
+            },
+            "required": ["answer", "citedBoardIds", "citedSourceUrls"],
+        },
+    },
+}
 
 
 VALID_TYPES = {"title", "bullet", "definition", "equation", "diagram", "image", "code", "annotation", "clear"}
@@ -490,7 +517,7 @@ async def generate_lesson(body: GenerateLessonInput, authorization: str | None =
 
 
 @app.post("/api/lesson-qa")
-async def lesson_qa(body: LessonQaInput, authorization: str | None = Header(default=None)) -> dict[str, str]:
+async def lesson_qa(body: LessonQaInput, authorization: str | None = Header(default=None)) -> dict[str, Any]:
     configured()
     token = bearer_token(authorization)
     async with httpx.AsyncClient(timeout=30) as client:
@@ -528,13 +555,25 @@ async def lesson_qa(body: LessonQaInput, authorization: str | None = Header(defa
 
         board_context = ""
         if body.whiteboardSnapshot:
-            board_context = "\n\nCurrent whiteboard state:\n" + "\n".join(
-                f"  [{index + 1}] ({item.type}) {item.summary}" for index, item in enumerate(body.whiteboardSnapshot)
+            board_context = (
+                "\n\nCurrent whiteboard state (cite by id when relied on):\n"
+                + "\n".join(
+                    f"  - id={item.id} ({item.type}) {item.summary}"
+                    for item in body.whiteboardSnapshot
+                )
             )
         pinned_context = ""
         if body.pinnedElements:
-            pinned_context = "\n\nThe learner selected these whiteboard items:\n" + "\n".join(
-                f"  - ({item.type}) {item.summary}" for item in body.pinnedElements
+            pinned_context = "\n\nThe learner explicitly selected these whiteboard items:\n" + "\n".join(
+                f"  - id={item.id} ({item.type}) {item.summary}" for item in body.pinnedElements
+            )
+        sources_context = ""
+        if body.availableSources:
+            sources_context = (
+                "\n\nLesson sources available for citation (cite by url when relied on):\n"
+                + "\n".join(
+                    f"  - url={src.url} — {src.title}" for src in body.availableSources
+                )
             )
 
         timeline_context = ""
@@ -555,7 +594,6 @@ async def lesson_qa(body: LessonQaInput, authorization: str | None = Header(defa
         lesson_row = lesson[0]
         section_row = section[0]
         full_script = section_row.get("script") or ""
-        # In follow-up mode, hide the rest of the script the learner hasn't reached yet.
         script_block = (
             f"Section script you just delivered: {full_script}"
             if not body.spokenSoFar
@@ -563,10 +601,12 @@ async def lesson_qa(body: LessonQaInput, authorization: str | None = Header(defa
         )
         system_prompt = f"""You are the AI tutor mid-lesson. Answer the learner's question briefly and conversationally in 2-4 sentences. Stay grounded in the current lesson context. Speak as if continuing the live lesson, with no preamble.
 
+Always call the respond_with_citations tool. Populate citedBoardIds with whiteboard ids you actually used (prefer items the learner just heard or pinned). Populate citedSourceUrls with source urls you actually relied on. If you didn't use any, return empty arrays — do not invent citations.
+
 Lesson: {lesson_row.get("title")}
 Summary: {lesson_row.get("summary")}
 Current section: {section_row.get("heading")}
-{script_block}{board_context}{pinned_context}{timeline_context}"""
+{script_block}{board_context}{pinned_context}{sources_context}{timeline_context}"""
 
         ai_json = await ai_chat({
             "model": AI_MODEL,
@@ -574,8 +614,28 @@ Current section: {section_row.get("heading")}
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": body.question},
             ],
+            "tools": [QA_TOOL_SCHEMA],
+            "tool_choice": {"type": "function", "function": {"name": "respond_with_citations"}},
         })
-        answer = ai_json.get("choices", [{}])[0].get("message", {}).get("content") or "Sorry, I couldn't answer that."
+
+        answer = "Sorry, I couldn't answer that."
+        cited_board_ids: list[str] = []
+        cited_source_urls: list[str] = []
+        try:
+            tool_call = ai_json.get("choices", [{}])[0].get("message", {}).get("tool_calls", [{}])[0]
+            args = json.loads(tool_call.get("function", {}).get("arguments") or "{}")
+            answer = (args.get("answer") or answer).strip()
+            valid_board = {item.id for item in body.whiteboardSnapshot} | {item.id for item in body.pinnedElements}
+            valid_urls = {src.url for src in body.availableSources}
+            cited_board_ids = [bid for bid in (args.get("citedBoardIds") or []) if isinstance(bid, str) and bid in valid_board]
+            cited_source_urls = [u for u in (args.get("citedSourceUrls") or []) if isinstance(u, str) and u in valid_urls]
+        except Exception:
+            # Fall back to plain content if tool parsing fails
+            content = ai_json.get("choices", [{}])[0].get("message", {}).get("content")
+            if content:
+                answer = content
+
+        addendum = {"citedBoardIds": cited_board_ids, "citedSourceUrls": cited_source_urls}
 
         await supabase_request(
             client,
@@ -587,6 +647,7 @@ Current section: {section_row.get("heading")}
                 "section_id": str(body.sectionId),
                 "role": "assistant",
                 "content": answer,
+                "whiteboard_addendum": addendum,
             },
         )
-        return {"answer": answer}
+        return {"answer": answer, "citedBoardIds": cited_board_ids, "citedSourceUrls": cited_source_urls}
