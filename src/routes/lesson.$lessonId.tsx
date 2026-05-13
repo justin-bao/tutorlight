@@ -242,6 +242,25 @@ function LessonView() {
 
     try {
       const token = (await supabase.auth.getSession()).data.session?.access_token ?? "";
+
+      // Build follow-up context: text the learner has actually heard up to `elapsed`.
+      const elapsed = timeline.elapsed;
+      let spokenSoFar = "";
+      if (transcriptWords && transcriptWords.length > 0) {
+        spokenSoFar = transcriptWords
+          .filter((w) => w.start <= elapsed)
+          .map((w) => w.text)
+          .join(" ")
+          .trim();
+      } else if (activeSection.script) {
+        const dur = (activeSection.audio_duration_ms ?? activeSection.estimated_duration_s * 1000) / 1000;
+        const ratio = dur > 0 ? Math.min(1, Math.max(0, elapsed / dur)) : 1;
+        const cutoff = Math.floor(activeSection.script.length * ratio);
+        spokenSoFar = activeSection.script.slice(0, cutoff).trim();
+      }
+      // Emphasize the last ~30 spoken words — that's the moment the learner paused to ask.
+      const recentEmphasis = spokenSoFar.split(/\s+/).slice(-30).join(" ");
+
       const resp = await fetch(apiUrl("/api/lesson-qa"), {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
@@ -259,6 +278,9 @@ function LessonView() {
             type: e.type,
             summary: summarize(e),
           })),
+          elapsedSeconds: elapsed,
+          spokenSoFar: spokenSoFar || undefined,
+          recentEmphasis: recentEmphasis || undefined,
         }),
       });
       const data = await resp.json();
