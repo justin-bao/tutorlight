@@ -93,9 +93,36 @@ class LessonQaInput(BaseModel):
     question: str = Field(min_length=1, max_length=800)
     pinnedElements: list[BoardRef] = Field(default_factory=list)
     whiteboardSnapshot: list[BoardRef] = Field(default_factory=list)
+    availableSources: list[Source] = Field(default_factory=list, max_length=12)
     elapsedSeconds: float | None = None
     spokenSoFar: str | None = Field(default=None, max_length=8000)
     recentEmphasis: str | None = Field(default=None, max_length=2000)
+
+
+QA_TOOL_SCHEMA: dict[str, Any] = {
+    "type": "function",
+    "function": {
+        "name": "respond_with_citations",
+        "description": "Answer the learner's follow-up question, citing whiteboard items and sources that informed the answer.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "answer": {"type": "string", "description": "2-4 sentence conversational answer."},
+                "citedBoardIds": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Whiteboard item ids (from the snapshot) you actually relied on. Empty if none.",
+                },
+                "citedSourceUrls": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Source URLs (from the available sources list) you actually relied on. Empty if none.",
+                },
+            },
+            "required": ["answer", "citedBoardIds", "citedSourceUrls"],
+        },
+    },
+}
 
 
 VALID_TYPES = {"title", "bullet", "definition", "equation", "diagram", "image", "code", "annotation", "clear"}
