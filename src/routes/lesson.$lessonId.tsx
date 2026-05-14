@@ -412,6 +412,7 @@ function LessonView() {
             words={transcriptWords}
             fallbackText={activeSection?.script ?? ""}
             elapsed={timeline.elapsed}
+            sources={activeSection?.sources ?? []}
             onSeek={(s) => timeline.seek(s)}
           />
           {activeIdx === sections.length - 1 && (
