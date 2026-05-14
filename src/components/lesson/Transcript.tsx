@@ -246,9 +246,27 @@ export function Transcript({ words, fallbackText, elapsed, sources, onSeek }: Tr
     return (
       <div
         ref={containerRef}
-        className="max-h-48 overflow-y-auto rounded-2xl border border-border/60 bg-card/50 p-3 text-sm leading-relaxed text-muted-foreground backdrop-blur"
+        className="flex max-h-48 flex-col gap-2 overflow-y-auto rounded-2xl border border-border/60 bg-card/50 p-3 text-sm leading-relaxed text-muted-foreground backdrop-blur"
       >
-        {fallbackText || <span className="italic">Transcript will appear here…</span>}
+        <div>
+          {fallbackText || <span className="italic">Transcript will appear here…</span>}
+        </div>
+        {safeSources.length > 0 && (
+          <div className="flex flex-wrap gap-1.5 border-t border-border/50 pt-2">
+            {safeSources.map((s, i) => (
+              <a
+                key={s.url}
+                href={s.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                title={s.title}
+                className="inline-flex items-center gap-1 rounded-full border border-border/60 bg-secondary/40 px-2 py-0.5 text-[10px] text-muted-foreground transition hover:border-primary/40 hover:text-foreground"
+              >
+                <ExternalLink className="h-2.5 w-2.5" />[{i + 1}] {s.title}
+              </a>
+            ))}
+          </div>
+        )}
       </div>
     );
   }
