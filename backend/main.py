@@ -87,6 +87,10 @@ class BoardRef(BaseModel):
     summary: str
 
 
+class LessonSuggestionsInput(BaseModel):
+    lessonId: UUID
+
+
 class LessonQaInput(BaseModel):
     lessonId: UUID
     sectionId: UUID
