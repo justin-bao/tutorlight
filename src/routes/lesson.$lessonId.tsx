@@ -414,6 +414,9 @@ function LessonView() {
             elapsed={timeline.elapsed}
             onSeek={(s) => timeline.seek(s)}
           />
+          {activeIdx === sections.length - 1 && (
+            <SuggestedTopics lessonId={lessonId} userId={user?.id} />
+          )}
         </div>
 
         {/* Right column */}
