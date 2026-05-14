@@ -655,3 +655,108 @@ Current section: {section_row.get("heading")}
             },
         )
         return {"answer": answer, "citedBoardIds": cited_board_ids, "citedSourceUrls": cited_source_urls}
+
+
+SUGGESTIONS_TOOL_SCHEMA: dict[str, Any] = {
+    "type": "function",
+    "function": {
+        "name": "suggest_followup_topics",
+        "description": "Propose 4 distinct follow-up topics the learner might want to explore next, given the lesson they just finished.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "topics": {
+                    "type": "array",
+                    "minItems": 4,
+                    "maxItems": 4,
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "title": {"type": "string", "description": "Short topic prompt (max 80 chars), phrased like a learner would type it."},
+                            "reason": {"type": "string", "description": "1 short sentence (max 120 chars) on why this is a natural next step."},
+                        },
+                        "required": ["title", "reason"],
+                    },
+                },
+            },
+            "required": ["topics"],
+        },
+    },
+}
+
+
+@app.post("/api/lesson-suggestions")
+async def lesson_suggestions(body: LessonSuggestionsInput, authorization: str | None = Header(default=None)) -> dict[str, Any]:
+    configured()
+    token = bearer_token(authorization)
+    async with httpx.AsyncClient(timeout=30) as client:
+        await ensure_user(client, token)
+        lesson = await supabase_request(
+            client,
+            token,
+            "GET",
+            "/rest/v1/lessons",
+            params={"id": f"eq.{body.lessonId}", "select": "id,topic,title,summary,suggested_topics"},
+        )
+        if not lesson:
+            raise HTTPException(status_code=404, detail="Lesson not found")
+        row = lesson[0]
+        cached = row.get("suggested_topics")
+        if isinstance(cached, list) and len(cached) >= 3:
+            return {"topics": cached}
+
+        sections = await supabase_request(
+            client,
+            token,
+            "GET",
+            "/rest/v1/lesson_sections",
+            params={
+                "lesson_id": f"eq.{body.lessonId}",
+                "select": "heading",
+                "order": "order_index.asc",
+            },
+        )
+        outline = "\n".join(f"  - {s.get('heading')}" for s in (sections or []))
+
+        system_prompt = f"""You suggest follow-up learning topics. The learner just finished this lesson:
+
+Topic: {row.get("topic")}
+Title: {row.get("title")}
+Summary: {row.get("summary")}
+Outline:
+{outline}
+
+Propose 4 distinct follow-up topics: a mix of (a) deeper dives into a specific section, (b) closely related concepts, and (c) one broader/adjacent topic. Each topic title should read like a learner's prompt (e.g. "How attention heads actually work"), be specific, and not duplicate what was just taught."""
+
+        ai_json = await ai_chat({
+            "model": AI_MODEL,
+            "messages": [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": "Suggest 4 follow-up topics."},
+            ],
+            "tools": [SUGGESTIONS_TOOL_SCHEMA],
+            "tool_choice": {"type": "function", "function": {"name": "suggest_followup_topics"}},
+        })
+
+        topics: list[dict[str, str]] = []
+        try:
+            tool_call = ai_json.get("choices", [{}])[0].get("message", {}).get("tool_calls", [{}])[0]
+            args = json.loads(tool_call.get("function", {}).get("arguments") or "{}")
+            for t in (args.get("topics") or [])[:4]:
+                title = (t.get("title") or "").strip()[:120]
+                reason = (t.get("reason") or "").strip()[:200]
+                if title:
+                    topics.append({"title": title, "reason": reason})
+        except Exception:
+            pass
+
+        if topics:
+            await supabase_request(
+                client,
+                token,
+                "PATCH",
+                "/rest/v1/lessons",
+                params={"id": f"eq.{body.lessonId}"},
+                json_body={"suggested_topics": topics},
+            )
+        return {"topics": topics}
