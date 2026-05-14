@@ -124,6 +124,7 @@ export type Database = {
           error: string | null
           id: string
           status: string
+          suggested_topics: Json | null
           summary: string | null
           title: string | null
           topic: string
@@ -134,6 +135,7 @@ export type Database = {
           error?: string | null
           id?: string
           status?: string
+          suggested_topics?: Json | null
           summary?: string | null
           title?: string | null
           topic: string
@@ -144,6 +146,7 @@ export type Database = {
           error?: string | null
           id?: string
           status?: string
+          suggested_topics?: Json | null
           summary?: string | null
           title?: string | null
           topic?: string

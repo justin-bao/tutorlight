@@ -11,6 +11,7 @@ import { synthesizeSectionAudio, getSectionAudioUrl } from "@/lib/lesson-audio.f
 import { TutorOrb } from "@/components/lesson/TutorOrb";
 import { useTutorSpeech } from "@/components/lesson/useTutorSpeech";
 import { Transcript, type TranscriptWord } from "@/components/lesson/Transcript";
+import { SuggestedTopics } from "@/components/lesson/SuggestedTopics";
 import { summarize } from "@/components/whiteboard/WhiteboardElement";
 import type { WhiteboardEvent } from "@/lib/whiteboard-types";
 import {
@@ -413,6 +414,9 @@ function LessonView() {
             elapsed={timeline.elapsed}
             onSeek={(s) => timeline.seek(s)}
           />
+          {activeIdx === sections.length - 1 && (
+            <SuggestedTopics lessonId={lessonId} userId={user?.id} />
+          )}
         </div>
 
         {/* Right column */}
