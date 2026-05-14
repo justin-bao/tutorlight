@@ -1,5 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Search, X, BookmarkIcon, ChevronUp, ChevronDown } from "lucide-react";
+import { Search, X, BookmarkIcon, ChevronUp, ChevronDown, ExternalLink } from "lucide-react";
+import {
+  HoverCard,
+  HoverCardContent,
+  HoverCardTrigger,
+} from "@/components/ui/hover-card";
 
 export interface TranscriptWord {
   text: string;
@@ -7,11 +12,75 @@ export interface TranscriptWord {
   end: number;
 }
 
+export interface TranscriptSource {
+  title: string;
+  url: string;
+}
+
 interface TranscriptProps {
   words: TranscriptWord[] | null;
   fallbackText: string;
   elapsed: number;
+  sources?: TranscriptSource[];
   onSeek?: (timeSeconds: number) => void;
+}
+
+const STOPWORDS = new Set([
+  "the", "a", "an", "and", "or", "but", "of", "to", "in", "on", "for", "with",
+  "from", "by", "at", "as", "is", "are", "was", "were", "be", "been", "being",
+  "this", "that", "these", "those", "it", "its", "into", "about", "your", "you",
+  "how", "what", "why", "when", "which", "who", "whom", "whose", "guide",
+  "introduction", "intro", "overview", "tutorial", "docs", "documentation",
+  "wiki", "wikipedia", "article", "blog", "post", "page", "site", "official",
+]);
+
+function normalizeWord(s: string) {
+  return s.toLowerCase().replace(/[^\p{L}\p{N}']/gu, "");
+}
+
+/**
+ * Pick the best transcript word index to attach each source citation to,
+ * by matching meaningful tokens of the source title against the transcript.
+ * Falls back to evenly-distributed positions when no match is found.
+ */
+function buildCitationMap(
+  words: TranscriptWord[],
+  sources: TranscriptSource[],
+): Map<number, number[]> {
+  const map = new Map<number, number[]>();
+  const used = new Set<number>();
+
+  sources.forEach((src, sIdx) => {
+    const tokens = (src.title || src.url)
+      .toLowerCase()
+      .split(/[^\p{L}\p{N}]+/u)
+      .filter((t) => t.length >= 4 && !STOPWORDS.has(t));
+
+    let best = -1;
+    if (tokens.length > 0) {
+      for (let i = 0; i < words.length; i++) {
+        if (used.has(i)) continue;
+        const w = normalizeWord(words[i].text);
+        if (!w) continue;
+        if (tokens.some((t) => w === t || w.startsWith(t) || t.startsWith(w))) {
+          best = i;
+          break;
+        }
+      }
+    }
+    if (best === -1) {
+      // Distribute leftover citations evenly so they still appear in-line.
+      const target = Math.floor(((sIdx + 1) / (sources.length + 1)) * words.length);
+      best = target;
+      while (used.has(best) && best < words.length - 1) best += 1;
+    }
+    used.add(best);
+    const arr = map.get(best) ?? [];
+    arr.push(sIdx);
+    map.set(best, arr);
+  });
+
+  return map;
 }
 
 interface Bookmark {
