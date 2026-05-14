@@ -360,6 +360,7 @@ export function Transcript({ words, fallbackText, elapsed, sources, onSeek }: Tr
               focusedMatchIdx >= 0 &&
               i >= focusedMatchIdx &&
               i < focusedMatchIdx + (query.trim().split(/\s+/).length || 1);
+            const cites = citationMap.get(i);
             return (
               <span key={i}>
                 <span
@@ -382,7 +383,44 @@ export function Transcript({ words, fallbackText, elapsed, sources, onSeek }: Tr
                   }
                 >
                   {w.text}
-                </span>{" "}
+                </span>
+                {cites?.map((sIdx) => {
+                  const s = safeSources[sIdx];
+                  if (!s) return null;
+                  return (
+                    <HoverCard key={sIdx} openDelay={120} closeDelay={80}>
+                      <HoverCardTrigger asChild>
+                        <a
+                          href={s.url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          onClick={(e) => e.stopPropagation()}
+                          className="ml-0.5 inline-flex items-center align-super text-[10px] font-medium text-primary hover:underline"
+                          aria-label={`Source ${sIdx + 1}: ${s.title}`}
+                        >
+                          [{sIdx + 1}]
+                        </a>
+                      </HoverCardTrigger>
+                      <HoverCardContent className="w-72 text-xs">
+                        <div className="mb-1 flex items-center gap-1.5 text-muted-foreground">
+                          <ExternalLink className="h-3 w-3" />
+                          <span className="font-mono text-[10px] uppercase tracking-widest">
+                            Source {sIdx + 1}
+                          </span>
+                        </div>
+                        <div className="mb-1 font-medium text-foreground">{s.title}</div>
+                        <a
+                          href={s.url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="break-all text-primary hover:underline"
+                        >
+                          {s.url}
+                        </a>
+                      </HoverCardContent>
+                    </HoverCard>
+                  );
+                })}{" "}
               </span>
             );
           })}
