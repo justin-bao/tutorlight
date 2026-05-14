@@ -135,7 +135,12 @@ function buildBookmarks(words: TranscriptWord[]): Bookmark[] {
   return picks;
 }
 
-export function Transcript({ words, fallbackText, elapsed, onSeek }: TranscriptProps) {
+export function Transcript({ words, fallbackText, elapsed, sources, onSeek }: TranscriptProps) {
+  const safeSources = sources ?? [];
+  const citationMap = useMemo(
+    () => (words && safeSources.length > 0 ? buildCitationMap(words, safeSources) : new Map<number, number[]>()),
+    [words, safeSources],
+  );
   const containerRef = useRef<HTMLDivElement>(null);
   const activeRef = useRef<HTMLSpanElement>(null);
   const wordRefs = useRef<Map<number, HTMLSpanElement>>(new Map());
