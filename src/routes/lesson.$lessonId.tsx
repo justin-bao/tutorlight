@@ -79,6 +79,9 @@ function LessonView() {
   const [question, setQuestion] = useState("");
   const [asking, setAsking] = useState(false);
   const [pollErr, setPollErr] = useState<string | null>(null);
+  const [previewSource, setPreviewSource] = useState<
+    { title: string; url: string; snippet?: string } | null
+  >(null);
 
   const tutor = useTutorSpeech();
   const activeSection = sections[activeIdx];
