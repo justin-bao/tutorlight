@@ -548,17 +548,16 @@ function LessonView() {
                           </button>
                         ))}
                         {citedSources.map((s) => (
-                          <a
+                          <button
                             key={`s-${s.url}`}
-                            href={s.url}
-                            target="_blank"
-                            rel="noopener noreferrer"
+                            type="button"
+                            onClick={() => setPreviewSource({ title: s.title, url: s.url })}
                             title={s.url}
                             className="inline-flex max-w-[180px] items-center gap-1 rounded-full bg-background/60 px-2 py-0.5 text-muted-foreground transition hover:bg-background hover:text-foreground"
                           >
                             <ExternalLink className="h-2.5 w-2.5" />
                             <span className="truncate">{s.title}</span>
-                          </a>
+                          </button>
                         ))}
                       </div>
                     )}
