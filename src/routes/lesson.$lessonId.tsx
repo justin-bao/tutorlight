@@ -425,7 +425,12 @@ function LessonView() {
             elapsed={timeline.elapsed}
             sources={activeSection?.sources ?? []}
             onSeek={(s) => timeline.seek(s)}
+            onSourceClick={(i, snippet) => {
+              const s = activeSection?.sources?.[i];
+              if (s) setPreviewSource({ ...s, snippet });
+            }}
           />
+
           {activeIdx === sections.length - 1 && (
             <SuggestedTopics lessonId={lessonId} userId={user?.id} />
           )}
