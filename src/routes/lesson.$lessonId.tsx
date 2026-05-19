@@ -24,7 +24,15 @@ import {
   Sparkles,
   X,
   ExternalLink,
+  Quote,
 } from "lucide-react";
+import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+  SheetDescription,
+} from "@/components/ui/sheet";
 
 export const Route = createFileRoute("/lesson/$lessonId")({
   component: LessonView,
@@ -71,6 +79,9 @@ function LessonView() {
   const [question, setQuestion] = useState("");
   const [asking, setAsking] = useState(false);
   const [pollErr, setPollErr] = useState<string | null>(null);
+  const [previewSource, setPreviewSource] = useState<
+    { title: string; url: string; snippet?: string } | null
+  >(null);
 
   const tutor = useTutorSpeech();
   const activeSection = sections[activeIdx];
@@ -414,7 +425,12 @@ function LessonView() {
             elapsed={timeline.elapsed}
             sources={activeSection?.sources ?? []}
             onSeek={(s) => timeline.seek(s)}
+            onSourceClick={(i, snippet) => {
+              const s = activeSection?.sources?.[i];
+              if (s) setPreviewSource({ ...s, snippet });
+            }}
           />
+
           {activeIdx === sections.length - 1 && (
             <SuggestedTopics lessonId={lessonId} userId={user?.id} />
           )}
@@ -532,17 +548,16 @@ function LessonView() {
                           </button>
                         ))}
                         {citedSources.map((s) => (
-                          <a
+                          <button
                             key={`s-${s.url}`}
-                            href={s.url}
-                            target="_blank"
-                            rel="noopener noreferrer"
+                            type="button"
+                            onClick={() => setPreviewSource({ title: s.title, url: s.url })}
                             title={s.url}
                             className="inline-flex max-w-[180px] items-center gap-1 rounded-full bg-background/60 px-2 py-0.5 text-muted-foreground transition hover:bg-background hover:text-foreground"
                           >
                             <ExternalLink className="h-2.5 w-2.5" />
                             <span className="truncate">{s.title}</span>
-                          </a>
+                          </button>
                         ))}
                       </div>
                     )}
@@ -604,6 +619,70 @@ function LessonView() {
           </div>
         </aside>
       </div>
+
+      <Sheet open={!!previewSource} onOpenChange={(o) => !o && setPreviewSource(null)}>
+        <SheetContent side="right" className="w-full overflow-y-auto sm:max-w-md">
+          {previewSource && (
+            <>
+              <SheetHeader className="text-left">
+                <div className="mb-1 flex items-center gap-1.5 text-[10px] font-mono uppercase tracking-widest text-muted-foreground">
+                  <ExternalLink className="h-3 w-3" />
+                  Source preview
+                </div>
+                <SheetTitle className="text-lg leading-snug">
+                  {previewSource.title}
+                </SheetTitle>
+                <SheetDescription className="break-all text-xs">
+                  {(() => {
+                    try {
+                      return new URL(previewSource.url).hostname.replace(/^www\./, "");
+                    } catch {
+                      return previewSource.url;
+                    }
+                  })()}
+                </SheetDescription>
+              </SheetHeader>
+
+              <div className="mt-5 space-y-4 text-sm">
+                <a
+                  href={previewSource.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1.5 rounded-full bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground transition hover:brightness-105"
+                >
+                  Open source <ExternalLink className="h-3 w-3" />
+                </a>
+
+                {previewSource.snippet && (
+                  <div className="rounded-xl border border-border/60 bg-secondary/30 p-3">
+                    <div className="mb-1.5 flex items-center gap-1.5 text-[10px] font-mono uppercase tracking-widest text-muted-foreground">
+                      <Quote className="h-3 w-3" />
+                      Cited in transcript
+                    </div>
+                    <p className="text-xs italic leading-relaxed text-foreground/80">
+                      …{previewSource.snippet}…
+                    </p>
+                  </div>
+                )}
+
+                <div className="rounded-xl border border-border/60 bg-card/40 p-3">
+                  <div className="mb-1.5 text-[10px] font-mono uppercase tracking-widest text-muted-foreground">
+                    Full URL
+                  </div>
+                  <a
+                    href={previewSource.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="break-all text-xs text-primary hover:underline"
+                  >
+                    {previewSource.url}
+                  </a>
+                </div>
+              </div>
+            </>
+          )}
+        </SheetContent>
+      </Sheet>
     </div>
   );
 }

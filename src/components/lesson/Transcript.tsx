@@ -23,6 +23,7 @@ interface TranscriptProps {
   elapsed: number;
   sources?: TranscriptSource[];
   onSeek?: (timeSeconds: number) => void;
+  onSourceClick?: (sourceIndex: number, snippet?: string) => void;
 }
 
 const STOPWORDS = new Set([
@@ -135,7 +136,7 @@ function buildBookmarks(words: TranscriptWord[]): Bookmark[] {
   return picks;
 }
 
-export function Transcript({ words, fallbackText, elapsed, sources, onSeek }: TranscriptProps) {
+export function Transcript({ words, fallbackText, elapsed, sources, onSeek, onSourceClick }: TranscriptProps) {
   const safeSources = sources ?? [];
   const citationMap = useMemo(
     () => (words && safeSources.length > 0 ? buildCitationMap(words, safeSources) : new Map<number, number[]>()),
@@ -257,8 +258,14 @@ export function Transcript({ words, fallbackText, elapsed, sources, onSeek }: Tr
               <a
                 key={s.url}
                 href={s.url}
-                target="_blank"
+                target={onSourceClick ? undefined : "_blank"}
                 rel="noopener noreferrer"
+                onClick={(e) => {
+                  if (onSourceClick) {
+                    e.preventDefault();
+                    onSourceClick(i);
+                  }
+                }}
                 title={s.title}
                 className="inline-flex items-center gap-1 rounded-full border border-border/60 bg-secondary/40 px-2 py-0.5 text-[10px] text-muted-foreground transition hover:border-primary/40 hover:text-foreground"
               >
@@ -387,14 +394,23 @@ export function Transcript({ words, fallbackText, elapsed, sources, onSeek }: Tr
                 {cites?.map((sIdx) => {
                   const s = safeSources[sIdx];
                   if (!s) return null;
+                  const lo = Math.max(0, i - 14);
+                  const hi = Math.min(words.length, i + 15);
+                  const snippet = words.slice(lo, hi).map((x) => x.text).join(" ");
                   return (
                     <HoverCard key={sIdx} openDelay={120} closeDelay={80}>
                       <HoverCardTrigger asChild>
                         <a
                           href={s.url}
-                          target="_blank"
+                          target={onSourceClick ? undefined : "_blank"}
                           rel="noopener noreferrer"
-                          onClick={(e) => e.stopPropagation()}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if (onSourceClick) {
+                              e.preventDefault();
+                              onSourceClick(sIdx, snippet);
+                            }
+                          }}
                           className="ml-0.5 inline-flex items-center align-super text-[10px] font-medium text-primary hover:underline"
                           aria-label={`Source ${sIdx + 1}: ${s.title}`}
                         >
@@ -409,14 +425,10 @@ export function Transcript({ words, fallbackText, elapsed, sources, onSeek }: Tr
                           </span>
                         </div>
                         <div className="mb-1 font-medium text-foreground">{s.title}</div>
-                        <a
-                          href={s.url}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="break-all text-primary hover:underline"
-                        >
-                          {s.url}
-                        </a>
+                        <div className="break-all text-primary">{s.url}</div>
+                        <div className="mt-1 text-[10px] text-muted-foreground">
+                          Click to open preview →
+                        </div>
                       </HoverCardContent>
                     </HoverCard>
                   );
