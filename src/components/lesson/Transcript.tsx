@@ -258,8 +258,14 @@ export function Transcript({ words, fallbackText, elapsed, sources, onSeek, onSo
               <a
                 key={s.url}
                 href={s.url}
-                target="_blank"
+                target={onSourceClick ? undefined : "_blank"}
                 rel="noopener noreferrer"
+                onClick={(e) => {
+                  if (onSourceClick) {
+                    e.preventDefault();
+                    onSourceClick(i);
+                  }
+                }}
                 title={s.title}
                 className="inline-flex items-center gap-1 rounded-full border border-border/60 bg-secondary/40 px-2 py-0.5 text-[10px] text-muted-foreground transition hover:border-primary/40 hover:text-foreground"
               >
