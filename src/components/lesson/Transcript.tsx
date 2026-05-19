@@ -23,6 +23,7 @@ interface TranscriptProps {
   elapsed: number;
   sources?: TranscriptSource[];
   onSeek?: (timeSeconds: number) => void;
+  onSourceClick?: (sourceIndex: number, snippet?: string) => void;
 }
 
 const STOPWORDS = new Set([
