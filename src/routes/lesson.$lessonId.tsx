@@ -24,7 +24,15 @@ import {
   Sparkles,
   X,
   ExternalLink,
+  Quote,
 } from "lucide-react";
+import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+  SheetDescription,
+} from "@/components/ui/sheet";
 
 export const Route = createFileRoute("/lesson/$lessonId")({
   component: LessonView,
