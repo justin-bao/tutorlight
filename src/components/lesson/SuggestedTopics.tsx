@@ -26,6 +26,12 @@ export function SuggestedTopics({ lessonId, userId }: Props) {
     (async () => {
       try {
         const token = (await supabase.auth.getSession()).data.session?.access_token ?? "";
+        // Fire-and-forget: persist what was learned into the user's memory.
+        fetch(apiUrl("/api/lesson-memory"), {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+          body: JSON.stringify({ lessonId }),
+        }).catch(() => {});
         const r = await fetch(apiUrl("/api/lesson-suggestions"), {
           method: "POST",
           headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
@@ -45,6 +51,7 @@ export function SuggestedTopics({ lessonId, userId }: Props) {
       cancelled = true;
     };
   }, [lessonId]);
+
 
   async function startLesson(topic: string) {
     if (!userId || starting) return;

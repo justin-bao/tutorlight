@@ -91,6 +91,11 @@ class LessonSuggestionsInput(BaseModel):
     lessonId: UUID
 
 
+class LessonMemoryInput(BaseModel):
+    lessonId: UUID
+
+
+
 class LessonQaInput(BaseModel):
     lessonId: UUID
     sectionId: UUID
@@ -685,6 +690,38 @@ SUGGESTIONS_TOOL_SCHEMA: dict[str, Any] = {
 }
 
 
+async def fetch_user_history(
+    client: httpx.AsyncClient, token: str, *, exclude_lesson_id: str
+) -> list[dict[str, Any]]:
+    rows = await supabase_request(
+        client,
+        token,
+        "GET",
+        "/rest/v1/lessons",
+        params={
+            "select": "id,topic,title,learned_concepts,created_at",
+            "id": f"neq.{exclude_lesson_id}",
+            "order": "created_at.desc",
+            "limit": "12",
+        },
+    )
+    return rows or []
+
+
+def format_history(rows: list[dict[str, Any]]) -> str:
+    if not rows:
+        return "(no prior lessons)"
+    lines: list[str] = []
+    for r in rows[:10]:
+        concepts = r.get("learned_concepts") or []
+        if isinstance(concepts, list) and concepts:
+            tail = " — concepts: " + ", ".join(str(c)[:60] for c in concepts[:5])
+        else:
+            tail = ""
+        lines.append(f"  - {r.get('title') or r.get('topic')}{tail}")
+    return "\n".join(lines)
+
+
 @app.post("/api/lesson-suggestions")
 async def lesson_suggestions(body: LessonSuggestionsInput, authorization: str | None = Header(default=None)) -> dict[str, Any]:
     configured()
@@ -718,15 +755,22 @@ async def lesson_suggestions(body: LessonSuggestionsInput, authorization: str | 
         )
         outline = "\n".join(f"  - {s.get('heading')}" for s in (sections or []))
 
-        system_prompt = f"""You suggest follow-up learning topics. The learner just finished this lesson:
+        history_rows = await fetch_user_history(client, token, exclude_lesson_id=str(body.lessonId))
+        history = format_history(history_rows)
 
+        system_prompt = f"""You suggest follow-up learning topics personalized to this learner.
+
+The learner just finished this lesson:
 Topic: {row.get("topic")}
 Title: {row.get("title")}
 Summary: {row.get("summary")}
 Outline:
 {outline}
 
-Propose 4 distinct follow-up topics: a mix of (a) deeper dives into a specific section, (b) closely related concepts, and (c) one broader/adjacent topic. Each topic title should read like a learner's prompt (e.g. "How attention heads actually work"), be specific, and not duplicate what was just taught."""
+Their prior learning history (most recent first):
+{history}
+
+Propose 4 distinct follow-up topics: a mix of (a) deeper dives into a specific section of the lesson just finished, (b) closely related concepts that build on what they already know from prior lessons, and (c) one broader/adjacent topic. Each topic title should read like a learner's prompt (e.g. "How attention heads actually work"), be specific, and MUST NOT duplicate any topic or concept already in their history."""
 
         ai_json = await ai_chat({
             "model": AI_MODEL,
@@ -758,5 +802,116 @@ Propose 4 distinct follow-up topics: a mix of (a) deeper dives into a specific s
                 "/rest/v1/lessons",
                 params={"id": f"eq.{body.lessonId}"},
                 json_body={"suggested_topics": topics},
+
             )
         return {"topics": topics}
+
+
+MEMORY_TOOL_SCHEMA: dict[str, Any] = {
+    "type": "function",
+    "function": {
+        "name": "extract_learned_concepts",
+        "description": "Extract 3-6 short, specific concepts the learner just learned in this lesson.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "concepts": {
+                    "type": "array",
+                    "minItems": 3,
+                    "maxItems": 6,
+                    "items": {
+                        "type": "string",
+                        "description": "A concise concept (max 60 chars), e.g. 'How softmax normalizes attention scores'.",
+                    },
+                },
+            },
+            "required": ["concepts"],
+        },
+    },
+}
+
+
+@app.post("/api/lesson-memory")
+async def lesson_memory(body: LessonMemoryInput, authorization: str | None = Header(default=None)) -> dict[str, Any]:
+    configured()
+    token = bearer_token(authorization)
+    async with httpx.AsyncClient(timeout=30) as client:
+        await ensure_user(client, token)
+        lesson = await supabase_request(
+            client,
+            token,
+            "GET",
+            "/rest/v1/lessons",
+            params={"id": f"eq.{body.lessonId}", "select": "id,topic,title,summary,learned_concepts,completed_at"},
+        )
+        if not lesson:
+            raise HTTPException(status_code=404, detail="Lesson not found")
+        row = lesson[0]
+        cached = row.get("learned_concepts")
+        if isinstance(cached, list) and len(cached) >= 3:
+            return {"concepts": cached, "cached": True}
+
+        sections = await supabase_request(
+            client,
+            token,
+            "GET",
+            "/rest/v1/lesson_sections",
+            params={
+                "lesson_id": f"eq.{body.lessonId}",
+                "select": "heading,script",
+                "order": "order_index.asc",
+            },
+        )
+        outline = "\n".join(
+            f"  - {s.get('heading')}: {(s.get('script') or '')[:240]}" for s in (sections or [])
+        )
+
+        system_prompt = f"""You distill what a learner just learned into a short memory list.
+
+Lesson title: {row.get("title")}
+Lesson summary: {row.get("summary")}
+Sections:
+{outline}
+
+Extract 3-6 concise concepts they now know. Each must be specific (not "neural networks"), <= 60 chars, and phrased as a discrete idea (e.g. "Why attention beats RNNs for long context")."""
+
+        ai_json = await ai_chat({
+            "model": AI_MODEL,
+            "messages": [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": "Extract the learned concepts."},
+            ],
+            "tools": [MEMORY_TOOL_SCHEMA],
+            "tool_choice": {"type": "function", "function": {"name": "extract_learned_concepts"}},
+        })
+
+        concepts: list[str] = []
+        try:
+            tool_call = ai_json.get("choices", [{}])[0].get("message", {}).get("tool_calls", [{}])[0]
+            args = json.loads(tool_call.get("function", {}).get("arguments") or "{}")
+            for c in (args.get("concepts") or [])[:6]:
+                text = (c or "").strip()[:80]
+                if text:
+                    concepts.append(text)
+        except Exception:
+            pass
+
+        patch: dict[str, Any] = {}
+        if concepts:
+            patch["learned_concepts"] = concepts
+        if not row.get("completed_at"):
+            from datetime import datetime, timezone
+            patch["completed_at"] = datetime.now(timezone.utc).isoformat()
+
+        if patch:
+            await supabase_request(
+                client,
+                token,
+                "PATCH",
+                "/rest/v1/lessons",
+                params={"id": f"eq.{body.lessonId}"},
+                json_body=patch,
+            )
+
+        return {"concepts": concepts, "cached": False}
+

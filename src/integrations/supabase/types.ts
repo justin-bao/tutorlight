@@ -120,9 +120,11 @@ export type Database = {
       }
       lessons: {
         Row: {
+          completed_at: string | null
           created_at: string
           error: string | null
           id: string
+          learned_concepts: Json | null
           status: string
           suggested_topics: Json | null
           summary: string | null
@@ -131,9 +133,11 @@ export type Database = {
           user_id: string
         }
         Insert: {
+          completed_at?: string | null
           created_at?: string
           error?: string | null
           id?: string
+          learned_concepts?: Json | null
           status?: string
           suggested_topics?: Json | null
           summary?: string | null
@@ -142,9 +146,11 @@ export type Database = {
           user_id: string
         }
         Update: {
+          completed_at?: string | null
           created_at?: string
           error?: string | null
           id?: string
+          learned_concepts?: Json | null
           status?: string
           suggested_topics?: Json | null
           summary?: string | null
