@@ -43,9 +43,18 @@ function LessonsList() {
         <Link to="/" className="flex items-center gap-2 text-sm text-muted-foreground transition hover:text-foreground">
           <ArrowLeft className="h-4 w-4" /> Home
         </Link>
-        <Link to="/" className="inline-flex items-center gap-1.5 rounded-full bg-primary px-3 py-1.5 text-sm text-primary-foreground transition hover:brightness-105">
-          <Sparkles className="h-3.5 w-3.5" /> New lesson
-        </Link>
+        <div className="flex items-center gap-2">
+          <Link
+            to="/profile"
+            className="inline-flex items-center gap-1.5 rounded-full border border-border/60 px-3 py-1.5 text-sm text-muted-foreground transition hover:text-foreground"
+          >
+            <User className="h-3.5 w-3.5" /> Profile
+          </Link>
+          <Link to="/" className="inline-flex items-center gap-1.5 rounded-full bg-primary px-3 py-1.5 text-sm text-primary-foreground transition hover:brightness-105">
+            <Sparkles className="h-3.5 w-3.5" /> New lesson
+          </Link>
+        </div>
+
       </header>
       <main className="relative z-10 mx-auto max-w-3xl px-6 pb-24 pt-6">
         <h1 className="font-display text-4xl tracking-tight md:text-5xl">My lessons</h1>
