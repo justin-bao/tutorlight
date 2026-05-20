@@ -2,7 +2,7 @@ import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useSession } from "@/lib/auth";
-import { ArrowLeft, BookOpen, Loader2, Sparkles } from "lucide-react";
+import { ArrowLeft, BookOpen, Loader2, Sparkles, User } from "lucide-react";
 
 export const Route = createFileRoute("/lessons")({
   component: LessonsList,
