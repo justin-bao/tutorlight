@@ -690,6 +690,38 @@ SUGGESTIONS_TOOL_SCHEMA: dict[str, Any] = {
 }
 
 
+async def fetch_user_history(
+    client: httpx.AsyncClient, token: str, *, exclude_lesson_id: str
+) -> list[dict[str, Any]]:
+    rows = await supabase_request(
+        client,
+        token,
+        "GET",
+        "/rest/v1/lessons",
+        params={
+            "select": "id,topic,title,learned_concepts,created_at",
+            "id": f"neq.{exclude_lesson_id}",
+            "order": "created_at.desc",
+            "limit": "12",
+        },
+    )
+    return rows or []
+
+
+def format_history(rows: list[dict[str, Any]]) -> str:
+    if not rows:
+        return "(no prior lessons)"
+    lines: list[str] = []
+    for r in rows[:10]:
+        concepts = r.get("learned_concepts") or []
+        if isinstance(concepts, list) and concepts:
+            tail = " — concepts: " + ", ".join(str(c)[:60] for c in concepts[:5])
+        else:
+            tail = ""
+        lines.append(f"  - {r.get('title') or r.get('topic')}{tail}")
+    return "\n".join(lines)
+
+
 @app.post("/api/lesson-suggestions")
 async def lesson_suggestions(body: LessonSuggestionsInput, authorization: str | None = Header(default=None)) -> dict[str, Any]:
     configured()
@@ -723,15 +755,22 @@ async def lesson_suggestions(body: LessonSuggestionsInput, authorization: str | 
         )
         outline = "\n".join(f"  - {s.get('heading')}" for s in (sections or []))
 
-        system_prompt = f"""You suggest follow-up learning topics. The learner just finished this lesson:
+        history_rows = await fetch_user_history(client, token, exclude_lesson_id=str(body.lessonId))
+        history = format_history(history_rows)
 
+        system_prompt = f"""You suggest follow-up learning topics personalized to this learner.
+
+The learner just finished this lesson:
 Topic: {row.get("topic")}
 Title: {row.get("title")}
 Summary: {row.get("summary")}
 Outline:
 {outline}
 
-Propose 4 distinct follow-up topics: a mix of (a) deeper dives into a specific section, (b) closely related concepts, and (c) one broader/adjacent topic. Each topic title should read like a learner's prompt (e.g. "How attention heads actually work"), be specific, and not duplicate what was just taught."""
+Their prior learning history (most recent first):
+{history}
+
+Propose 4 distinct follow-up topics: a mix of (a) deeper dives into a specific section of the lesson just finished, (b) closely related concepts that build on what they already know from prior lessons, and (c) one broader/adjacent topic. Each topic title should read like a learner's prompt (e.g. "How attention heads actually work"), be specific, and MUST NOT duplicate any topic or concept already in their history."""
 
         ai_json = await ai_chat({
             "model": AI_MODEL,
@@ -763,5 +802,6 @@ Propose 4 distinct follow-up topics: a mix of (a) deeper dives into a specific s
                 "/rest/v1/lessons",
                 params={"id": f"eq.{body.lessonId}"},
                 json_body={"suggested_topics": topics},
+
             )
         return {"topics": topics}
