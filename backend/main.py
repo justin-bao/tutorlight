@@ -91,6 +91,11 @@ class LessonSuggestionsInput(BaseModel):
     lessonId: UUID
 
 
+class LessonMemoryInput(BaseModel):
+    lessonId: UUID
+
+
+
 class LessonQaInput(BaseModel):
     lessonId: UUID
     sectionId: UUID
