@@ -805,3 +805,113 @@ Propose 4 distinct follow-up topics: a mix of (a) deeper dives into a specific s
 
             )
         return {"topics": topics}
+
+
+MEMORY_TOOL_SCHEMA: dict[str, Any] = {
+    "type": "function",
+    "function": {
+        "name": "extract_learned_concepts",
+        "description": "Extract 3-6 short, specific concepts the learner just learned in this lesson.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "concepts": {
+                    "type": "array",
+                    "minItems": 3,
+                    "maxItems": 6,
+                    "items": {
+                        "type": "string",
+                        "description": "A concise concept (max 60 chars), e.g. 'How softmax normalizes attention scores'.",
+                    },
+                },
+            },
+            "required": ["concepts"],
+        },
+    },
+}
+
+
+@app.post("/api/lesson-memory")
+async def lesson_memory(body: LessonMemoryInput, authorization: str | None = Header(default=None)) -> dict[str, Any]:
+    configured()
+    token = bearer_token(authorization)
+    async with httpx.AsyncClient(timeout=30) as client:
+        await ensure_user(client, token)
+        lesson = await supabase_request(
+            client,
+            token,
+            "GET",
+            "/rest/v1/lessons",
+            params={"id": f"eq.{body.lessonId}", "select": "id,topic,title,summary,learned_concepts,completed_at"},
+        )
+        if not lesson:
+            raise HTTPException(status_code=404, detail="Lesson not found")
+        row = lesson[0]
+        cached = row.get("learned_concepts")
+        if isinstance(cached, list) and len(cached) >= 3:
+            return {"concepts": cached, "cached": True}
+
+        sections = await supabase_request(
+            client,
+            token,
+            "GET",
+            "/rest/v1/lesson_sections",
+            params={
+                "lesson_id": f"eq.{body.lessonId}",
+                "select": "heading,script",
+                "order": "order_index.asc",
+            },
+        )
+        outline = "\n".join(
+            f"  - {s.get('heading')}: {(s.get('script') or '')[:240]}" for s in (sections or [])
+        )
+
+        system_prompt = f"""You distill what a learner just learned into a short memory list.
+
+Lesson title: {row.get("title")}
+Lesson summary: {row.get("summary")}
+Sections:
+{outline}
+
+Extract 3-6 concise concepts they now know. Each must be specific (not "neural networks"), <= 60 chars, and phrased as a discrete idea (e.g. "Why attention beats RNNs for long context")."""
+
+        ai_json = await ai_chat({
+            "model": AI_MODEL,
+            "messages": [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": "Extract the learned concepts."},
+            ],
+            "tools": [MEMORY_TOOL_SCHEMA],
+            "tool_choice": {"type": "function", "function": {"name": "extract_learned_concepts"}},
+        })
+
+        concepts: list[str] = []
+        try:
+            tool_call = ai_json.get("choices", [{}])[0].get("message", {}).get("tool_calls", [{}])[0]
+            args = json.loads(tool_call.get("function", {}).get("arguments") or "{}")
+            for c in (args.get("concepts") or [])[:6]:
+                text = (c or "").strip()[:80]
+                if text:
+                    concepts.append(text)
+        except Exception:
+            pass
+
+        patch: dict[str, Any] = {}
+        if concepts:
+            patch["learned_concepts"] = concepts
+        if not row.get("completed_at"):
+            from datetime import datetime, timezone
+            patch["completed_at"] = datetime.now(timezone.utc).isoformat()
+
+        if patch:
+            await supabase_request(
+                client,
+                token,
+                "PATCH",
+                "/rest/v1/lessons",
+                params={"id": f"eq.{body.lessonId}"},
+                json_body=patch,
+            )
+
+        return {"concepts": concepts, "cached": False}
+
